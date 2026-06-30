@@ -76,141 +76,19 @@
   </div>
 
   <div v-else class="flex size-full h-screen bg-background">
-    <aside class="hidden w-72 shrink-0 border-r bg-muted/20 p-3 md:flex md:flex-col">
-      <div class="mb-3 flex items-center justify-between gap-2">
-        <div class="text-sm font-semibold">企业智能体</div>
-        <button
-          class="inline-flex size-8 items-center justify-center rounded-md border bg-background transition-colors hover:bg-accent"
-          title="新建会话"
-          @click="startNewConversation"
-        >
-          <PlusIcon class="size-4" />
-        </button>
-      </div>
-
-      <div v-if="conversationError" class="mb-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-        {{ conversationError }}
-      </div>
-
-      <div class="min-h-0 flex-1 space-y-1 overflow-y-auto">
-        <div
-          v-for="conversation in conversations"
-          :key="conversation.id"
-          class="group flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
-          :class="conversation.id === activeConversationId ? 'bg-accent text-accent-foreground' : 'text-muted-foreground'"
-          role="button"
-          tabindex="0"
-          @click="loadConversation(conversation.id)"
-          @keydown.enter="loadConversation(conversation.id)"
-        >
-          <MessageSquareIcon class="size-4 shrink-0" />
-          <span class="min-w-0 flex-1 truncate">{{ conversation.title || '新会话' }}</span>
-          <button
-            class="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition hover:bg-background hover:text-destructive group-hover:opacity-100"
-            title="删除会话"
-            @click.stop="removeConversation(conversation.id)"
-          >
-            <Trash2Icon class="size-3.5" />
-          </button>
-        </div>
-
-        <div v-if="!conversations.length && !loadingConversations" class="px-3 py-8 text-center text-xs text-muted-foreground">
-          暂无会话
-        </div>
-      </div>
-
-      <div class="mt-3 border-t pt-3">
-        <div class="flex items-center gap-2 rounded-md px-2 py-2">
-          <Avatar class="size-8">
-            <AvatarFallback>{{ userInitial }}</AvatarFallback>
-          </Avatar>
-          <div class="min-w-0 flex-1">
-            <div class="truncate text-sm font-medium">{{ bootstrap.state.userName }}</div>
-            <div class="text-xs text-muted-foreground">已登录</div>
-          </div>
-          <Button variant="ghost" size="sm" class="px-2" @click="handleLogout">
-            退出
-          </Button>
-        </div>
-      </div>
-    </aside>
-
-    <div
-      v-if="mobileSidebarOpen"
-      data-testid="mobile-sidebar"
-      class="fixed inset-0 z-40 md:hidden"
-    >
-      <button
-        class="absolute inset-0 bg-background/80 backdrop-blur-sm"
-        type="button"
-        title="关闭会话列表"
-        @click="mobileSidebarOpen = false"
-      />
-      <aside class="absolute inset-y-0 left-0 flex w-80 max-w-[86vw] flex-col border-r bg-background p-3 shadow-xl">
-        <div class="mb-3 flex items-center justify-between gap-2">
-          <div class="text-sm font-semibold">企业智能体</div>
-          <button
-            data-testid="mobile-sidebar-close"
-            class="inline-flex size-8 items-center justify-center rounded-md border bg-background transition-colors hover:bg-accent"
-            title="关闭会话列表"
-            @click="mobileSidebarOpen = false"
-          >
-            <XIcon class="size-4" />
-          </button>
-        </div>
-
-        <Button class="mb-3 h-9 justify-start gap-2" variant="outline" @click="startNewConversation">
-          <PlusIcon class="size-4" />
-          新建会话
-        </Button>
-
-        <div v-if="conversationError" class="mb-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          {{ conversationError }}
-        </div>
-
-        <div class="min-h-0 flex-1 space-y-1 overflow-y-auto">
-          <div
-            v-for="conversation in conversations"
-            :key="conversation.id"
-            class="group flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
-            :class="conversation.id === activeConversationId ? 'bg-accent text-accent-foreground' : 'text-muted-foreground'"
-            role="button"
-            tabindex="0"
-            @click="selectConversation(conversation.id)"
-            @keydown.enter="selectConversation(conversation.id)"
-          >
-            <MessageSquareIcon class="size-4 shrink-0" />
-            <span class="min-w-0 flex-1 truncate">{{ conversation.title || '新会话' }}</span>
-            <button
-              class="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-100 transition hover:bg-background hover:text-destructive"
-              title="删除会话"
-              @click.stop="removeConversation(conversation.id)"
-            >
-              <Trash2Icon class="size-3.5" />
-            </button>
-          </div>
-
-          <div v-if="!conversations.length && !loadingConversations" class="px-3 py-8 text-center text-xs text-muted-foreground">
-            暂无会话
-          </div>
-        </div>
-
-        <div class="mt-3 border-t pt-3">
-          <div class="flex items-center gap-2 rounded-md px-2 py-2">
-            <Avatar class="size-8">
-              <AvatarFallback>{{ userInitial }}</AvatarFallback>
-            </Avatar>
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-medium">{{ bootstrap.state.userName }}</div>
-              <div class="text-xs text-muted-foreground">已登录</div>
-            </div>
-            <Button variant="ghost" size="sm" class="px-2" @click="handleLogout">
-              退出
-            </Button>
-          </div>
-        </div>
-      </aside>
-    </div>
+    <ConversationSidebar
+      v-model:mobile-open="mobileSidebarOpen"
+      :active-conversation-id="activeConversationId"
+      :conversation-error="conversationError"
+      :conversations="conversations"
+      :loading-conversations="loadingConversations"
+      :user-initial="userInitial"
+      :user-name="bootstrap.state.userName"
+      @delete="removeConversation"
+      @logout="handleLogout"
+      @new="startNewConversation"
+      @select="selectConversation"
+    />
 
     <main class="relative mx-auto flex min-w-0 flex-1 flex-col p-4 md:p-6">
       <div class="mb-3 flex items-center justify-between md:hidden">
@@ -455,12 +333,12 @@
 <script setup lang="ts">
 import type { ChatStatus } from 'ai'
 import * as echarts from 'echarts'
-import { BookOpenIcon, CheckIcon, ChevronDownIcon, CopyIcon, EyeIcon, EyeOffIcon, MessageSquareIcon, PanelLeftIcon, PlusIcon, SparklesIcon, Trash2Icon, XIcon } from '@lucide/vue'
+import { BookOpenIcon, CheckIcon, ChevronDownIcon, CopyIcon, EyeIcon, EyeOffIcon, PanelLeftIcon, PlusIcon, SparklesIcon } from '@lucide/vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import ConversationSidebar from '@/features/agent/ConversationSidebar.vue'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
