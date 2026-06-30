@@ -206,6 +206,22 @@
                 class="h-auto min-h-0 w-full"
               />
               <div
+                v-if="message.role === 'assistant' && message.content"
+                class="mt-2 flex justify-end"
+              >
+                <Button
+                  class="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+                  size="sm"
+                  variant="ghost"
+                  type="button"
+                  @click="copyMessageContent(message)"
+                >
+                  <CheckIcon v-if="copiedMessageId === message.id" class="size-3.5" />
+                  <CopyIcon v-else class="size-3.5" />
+                  {{ copiedMessageId === message.id ? '已复制' : '复制' }}
+                </Button>
+              </div>
+              <div
                 v-if="message.stopped"
                 class="mt-2 flex items-center gap-1.5 text-xs text-destructive"
               >
@@ -352,7 +368,7 @@
 <script setup lang="ts">
 import type { ChatStatus } from 'ai'
 import * as echarts from 'echarts'
-import { BookOpenIcon, ChevronDownIcon, EyeIcon, EyeOffIcon, MessageSquareIcon, PlusIcon, SparklesIcon, Trash2Icon } from '@lucide/vue'
+import { BookOpenIcon, CheckIcon, ChevronDownIcon, CopyIcon, EyeIcon, EyeOffIcon, MessageSquareIcon, PlusIcon, SparklesIcon, Trash2Icon } from '@lucide/vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
@@ -443,6 +459,8 @@ const loginForm = reactive({
 
 const abortController = ref<AbortController | null>(null)
 const activeConversationId = ref<number | undefined>()
+const copiedMessageId = ref('')
+let copiedResetTimer: ReturnType<typeof setTimeout> | undefined
 
 const tips = [
   '帮我总结一下本月经营情况',
@@ -660,6 +678,16 @@ async function retryMessage(message: ChatMessage) {
   if (status.value !== 'ready' || !message.retryQuery) return
   messages.value.push(createUserMessage(message.retryQuery))
   await sendMessage(message.retryQuery)
+}
+
+async function copyMessageContent(message: ChatMessage) {
+  if (!message.content || !navigator?.clipboard?.writeText) return
+  await navigator.clipboard.writeText(message.content)
+  copiedMessageId.value = message.id
+  if (copiedResetTimer) clearTimeout(copiedResetTimer)
+  copiedResetTimer = setTimeout(() => {
+    if (copiedMessageId.value === message.id) copiedMessageId.value = ''
+  }, 1600)
 }
 
 async function sendMessage(text: string) {
@@ -890,6 +918,7 @@ window.addEventListener('resize', () => {
 
 onBeforeUnmount(() => {
   disposeCharts()
+  if (copiedResetTimer) clearTimeout(copiedResetTimer)
 })
 
 function findLastAssistantIndex(): number {

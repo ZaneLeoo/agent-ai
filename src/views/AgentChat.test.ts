@@ -56,4 +56,32 @@ describe('AgentChat', () => {
     expect(streamAgentChatMock).toHaveBeenCalledTimes(2)
     expect(streamAgentChatMock.mock.calls[1][1]).toMatchObject({ query: '你好' })
   })
+
+  it('copies assistant response content', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    streamAgentChatMock.mockImplementationOnce(async (...args: unknown[]) => {
+      const onEvent = args[2] as (event: { event: string, data: unknown }) => void
+      onEvent({ event: 'message', data: { content: '这是一段可复制回答' } })
+      onEvent({ event: 'done', data: {} })
+    })
+
+    const wrapper = mount(AgentChat)
+    await flushPromises()
+
+    await wrapper.find('textarea').setValue('复制测试')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const copyButton = wrapper.findAll('button').find(button => button.text() === '复制')
+    expect(copyButton).toBeTruthy()
+    await copyButton!.trigger('click')
+    await flushPromises()
+
+    expect(writeText).toHaveBeenCalledWith('这是一段可复制回答')
+    expect(wrapper.text()).toContain('已复制')
+  })
 })
