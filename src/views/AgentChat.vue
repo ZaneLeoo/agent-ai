@@ -175,6 +175,9 @@
               <template v-else-if="message.stopped">
                 <span class="text-destructive">已取消</span>
               </template>
+              <template v-else-if="message.failed">
+                <span class="text-destructive">执行失败</span>
+              </template>
               <template v-else>
                 <span>处理完成 · {{ doneCount(message) }}/{{ message.steps.length }} 步</span>
               </template>
@@ -211,9 +214,20 @@
               </div>
               <div
                 v-if="message.error"
-                class="mt-2 text-xs text-destructive"
+                class="mt-2 flex flex-wrap items-center gap-2 text-xs text-destructive"
               >
-                {{ message.error }}
+                <span>{{ message.error }}</span>
+                <Button
+                  v-if="message.retryQuery"
+                  class="h-7 px-2 text-xs"
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  :disabled="status !== 'ready'"
+                  @click="retryMessage(message)"
+                >
+                  重试
+                </Button>
               </div>
               <Sources
                 v-if="message.sources.length"
@@ -401,7 +415,9 @@ interface ChatMessage {
   steps: ThinkingStep[]
   thinkingOpen: boolean
   stopped: boolean
+  failed: boolean
   error: string
+  retryQuery: string
   artifacts: ArtifactItem[]
   sources: AgentSourceItem[]
 }
@@ -519,13 +535,15 @@ function createUserMessage(content: string): ChatMessage {
     steps: [],
     thinkingOpen: false,
     stopped: false,
+    failed: false,
     error: '',
+    retryQuery: '',
     artifacts: [],
     sources: [],
   }
 }
 
-function createAssistantMessage(content = ''): ChatMessage {
+function createAssistantMessage(content = '', retryQuery = ''): ChatMessage {
   return {
     id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     role: 'assistant',
@@ -534,7 +552,9 @@ function createAssistantMessage(content = ''): ChatMessage {
     steps: [],
     thinkingOpen: false,
     stopped: false,
+    failed: false,
     error: '',
+    retryQuery,
     artifacts: [],
     sources: [],
   }
@@ -598,7 +618,9 @@ function toChatMessage(item: MessageItem): ChatMessage {
     steps: [],
     thinkingOpen: false,
     stopped: false,
+    failed: false,
     error: '',
+    retryQuery: '',
     artifacts: [],
     sources: [],
   }
@@ -634,8 +656,14 @@ async function handleSubmit(event: { text: string }) {
   await sendMessage(text)
 }
 
+async function retryMessage(message: ChatMessage) {
+  if (status.value !== 'ready' || !message.retryQuery) return
+  messages.value.push(createUserMessage(message.retryQuery))
+  await sendMessage(message.retryQuery)
+}
+
 async function sendMessage(text: string) {
-  const assistant = createAssistantMessage()
+  const assistant = createAssistantMessage('', text)
   assistant.streaming = true
   assistant.thinkingOpen = true
   messages.value.push(assistant)
@@ -654,6 +682,8 @@ async function sendMessage(text: string) {
   } catch (e: unknown) {
     if (e instanceof DOMException && e.name === 'AbortError') return
     messages.value[idx].error = e instanceof Error ? e.message : '请求失败'
+    messages.value[idx].failed = true
+    completeActiveSteps(messages.value[idx])
   } finally {
     messages.value[idx].streaming = false
     status.value = 'ready'
@@ -723,10 +753,17 @@ function handleStreamEvent(idx: number, event: { event: string; data: unknown })
       const d = data as { message?: string }
       msg.error = d.message || '服务端错误'
       msg.streaming = false
-      msg.stopped = true
+      msg.failed = true
+      completeActiveSteps(msg)
       status.value = 'ready'
       break
     }
+  }
+}
+
+function completeActiveSteps(msg: ChatMessage) {
+  for (const step of msg.steps) {
+    if (step.status === 'active') step.status = 'complete'
   }
 }
 
