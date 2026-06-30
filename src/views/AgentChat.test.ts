@@ -84,4 +84,20 @@ describe('AgentChat', () => {
     expect(writeText).toHaveBeenCalledWith('这是一段可复制回答')
     expect(wrapper.text()).toContain('已复制')
   })
+
+  it('opens and closes the mobile conversation drawer', async () => {
+    const wrapper = mount(AgentChat)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="mobile-sidebar"]').exists()).toBe(false)
+
+    const openButton = wrapper.findAll('button').find(button => button.text() === '会话')
+    expect(openButton).toBeTruthy()
+    await openButton!.trigger('click')
+
+    expect(wrapper.find('[data-testid="mobile-sidebar"]').exists()).toBe(true)
+
+    await wrapper.find('[data-testid="mobile-sidebar-close"]').trigger('click')
+    expect(wrapper.find('[data-testid="mobile-sidebar"]').exists()).toBe(false)
+  })
 })
