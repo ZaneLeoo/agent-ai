@@ -1,0 +1,226 @@
+# 企业智能体 V2 计划
+
+更新时间：2026-07-01
+
+## 版本定位
+
+V1 的目标是“独立项目可用”。V2 的目标是“规范化、可验证、可持续迭代”。
+
+V2 不以正式嵌入 RuoYi 主前端为硬目标，但需要为后续嵌入做好技术准备。当前仍以 `agent-ui` 独立项目为主。
+
+## 核心目标
+
+- 让 Dify 工作流配置有标准可循。
+- 让前端对 Dify 节点、事件、产物的解析集中化，减少散落规则。
+- 让关键用户链路可以自动验证。
+- 让 `AgentChat.vue` 继续瘦身，降低后续维护成本。
+- 为第三版嵌入 RuoYi 主前端准备认证、路由和部署方案。
+
+## 当前已完成
+
+- Dify 节点命名规范文档：[dify-node-naming-convention.md](./dify-node-naming-convention.md)
+- 前端 Dify 节点解析器：`src/lib/dify-node.ts`
+- Dify 节点解析器单元测试：`src/lib/dify-node.test.ts`
+
+## 执行原则
+
+- 每个功能或结构性调整单独提交。
+- 每次代码变更后执行：
+
+```bash
+npm run test -- --run
+npm run build
+```
+
+- 纯文档变更可以不跑构建，但需要独立提交。
+- 优先保持现有功能稳定，不在 V2 做大规模视觉重设计。
+- 遇到 Dify 或后端返回结构不确定时，先补文档和类型，再改 UI。
+
+## 任务拆分
+
+### 1. Dify 规范化
+
+状态：进行中
+
+已完成：
+
+- 编写 Dify 节点命名规范。
+- 前端新增 `parseDifyNode`，支持标准前缀、Dify `nodeType` 和关键词兜底。
+
+待完成：
+
+- 根据真实 SSE 样例补充更多节点类型兼容规则。
+- 明确分类器分支名称与前端展示关系。
+- 如果后端后续支持，增加标准字段：`nodeType`、`displayName`、`nodeKind`。
+
+验收标准：
+
+- 新命名节点可以正确展示为“用户输入、识别意图、检索知识库、大模型思考、生成图表、整理回答”等。
+- 老节点名仍有兜底展示，不出现空白步骤。
+
+### 2. SSE 事件结构梳理
+
+状态：未开始
+
+目标：
+
+- 梳理后端实际转发给前端的 SSE event 类型。
+- 明确每类事件的前端消费字段。
+- 尽量用 TypeScript 类型表达事件结构。
+
+需要覆盖的事件：
+
+```text
+conversation
+message
+message_replace
+node
+workflow
+artifact
+error
+done
+```
+
+交付物：
+
+- `docs/sse-events.md`
+- `src/types/agent.ts` 中更清晰的事件类型定义
+- 必要的解析/兼容测试
+
+验收标准：
+
+- 前端不再依赖大段 `unknown` 强转。
+- 新增或变更 event 时，开发者知道应该改哪里。
+
+### 3. 组件拆分
+
+状态：部分完成
+
+已完成：
+
+- 侧栏拆分为：
+  - `ConversationSidebar.vue`
+  - `ConversationList.vue`
+  - `UserFooter.vue`
+
+待拆分：
+
+- `LoginPanel.vue`
+- `ChatWelcome.vue`
+- `AssistantMessage.vue`
+- `ThinkingSteps.vue`
+- `ArtifactRenderer.vue`
+- `SourcesPanel.vue`
+
+执行顺序建议：
+
+1. 先拆纯展示组件：`ChatWelcome`、`SourcesPanel`。
+2. 再拆产物组件：`ArtifactRenderer`。
+3. 最后拆消息组件：`AssistantMessage`、`ThinkingSteps`。
+4. 登录面板可以单独拆，风险较低。
+
+验收标准：
+
+- `AgentChat.vue` 只保留主状态、事件编排和少量页面骨架。
+- 拆分后单元测试和构建通过。
+
+### 4. 端到端测试
+
+状态：未开始
+
+目标：
+
+- 给第一版核心链路补浏览器级冒烟测试。
+
+建议覆盖：
+
+- 登录页渲染。
+- 已登录状态进入聊天页。
+- 发送问题并出现用户消息。
+- 流式回答展示。
+- 知识库来源可展开。
+- 移动端打开/关闭会话抽屉。
+- 图表容器非空白。
+
+交付物：
+
+- Playwright 配置。
+- `tests/e2e/agent-chat.spec.ts`
+- 必要的 API mock 或测试模式说明。
+
+验收标准：
+
+- 本地可以一条命令跑通核心 e2e。
+- 后续改 UI 时能快速发现主链路回归。
+
+### 5. 构建体积优化
+
+状态：未开始
+
+当前问题：
+
+- 构建可通过，但 chunk 偏大。
+- 主要体积来自 Markdown 渲染、高亮语言包、Mermaid、ECharts 等能力。
+
+建议方向：
+
+- ECharts 按需引入或懒加载。
+- Mermaid/代码高亮延迟加载。
+- Markdown 高亮语言包裁剪。
+- 对首屏无关能力做动态 import。
+
+验收标准：
+
+- 首屏主 chunk 明显下降。
+- 构建警告减少或有明确的保留说明。
+
+### 6. RuoYi 嵌入预研
+
+状态：未开始
+
+V2 只做方案，不强制落地。
+
+需要明确：
+
+- 独立访问和嵌入访问是否共用同一套登录态。
+- RuoYi token 如何传给 `agent-ui`。
+- `baseApi` 如何按环境注入。
+- iframe 嵌入、反向代理、微前端三种方式的取舍。
+- 菜单、权限、路由和退出登录如何联动。
+
+交付物：
+
+- `docs/ruoyi-embed-plan.md`
+
+验收标准：
+
+- 第三版可以按方案直接开工嵌入，不再重新讨论大方向。
+
+## 推荐执行顺序
+
+1. 完成 SSE 事件结构文档和类型整理。
+2. 拆 `ChatWelcome`、`SourcesPanel`、`ArtifactRenderer`。
+3. 增加 Playwright 冒烟测试。
+4. 根据测试反馈继续拆 `AssistantMessage`、`ThinkingSteps`。
+5. 做构建体积优化。
+6. 写 RuoYi 嵌入预研方案。
+7. 编写 V2 验收记录。
+
+## V2 验收标准
+
+- Dify 节点规范已文档化并接入前端解析。
+- SSE event 结构有文档和类型定义。
+- `AgentChat.vue` 明显瘦身，核心展示组件拆分完成。
+- 至少有一组浏览器级冒烟测试。
+- `npm run test -- --run` 通过。
+- `npm run build` 通过。
+- 构建体积问题有优化或明确说明。
+- 有 RuoYi 嵌入预研文档。
+- 有 V2 验收文档。
+
+## 不纳入 V2
+
+- 不强制完成 RuoYi 主前端菜单集成。
+- 不重做整体视觉风格。
+- 不切换 Dify 或后端核心架构。
+- 不做多智能体市场、插件中心等大型能力。
