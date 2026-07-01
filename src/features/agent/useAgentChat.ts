@@ -16,6 +16,7 @@ import { applyArtifactStep, applyNodeEvent } from '@/lib/steps'
 import type { AgentChatMessage } from './AssistantMessage.vue'
 
 type BootstrapStore = ReturnType<typeof createBootstrapStore>
+const PENDING_STEP_ID = 'step:pending-response'
 
 export function useAgentChat(
   bootstrap: BootstrapStore,
@@ -69,6 +70,7 @@ export function useAgentChat(
     const assistant = createAssistantMessage('', text)
     assistant.streaming = true
     assistant.thinkingOpen = true
+    ensurePendingStep(assistant)
     messages.value.push(assistant)
     const idx = messages.value.length - 1
     status.value = 'submitted'
@@ -162,14 +164,17 @@ export function useAgentChat(
         break
       }
       case 'message': {
+        markPendingStepAsGenerating(msg)
         if (data.content) msg.content += data.content
         break
       }
       case 'message_replace': {
+        markPendingStepAsGenerating(msg)
         if (data.content) msg.content = data.content
         break
       }
       case 'node': {
+        removePendingStep(msg)
         applyNodeEvent(msg.steps, data)
         break
       }
@@ -181,6 +186,7 @@ export function useAgentChat(
         break
       }
       case 'artifact': {
+        removePendingStep(msg)
         appendArtifacts(msg, getArtifactsFromStreamData(data))
         break
       }
@@ -259,6 +265,29 @@ export function useAgentChat(
     for (const step of msg.steps) {
       if (step.status === 'active') step.status = 'complete'
     }
+  }
+
+  function ensurePendingStep(msg: AgentChatMessage) {
+    if (msg.steps.some(step => step.id === PENDING_STEP_ID)) return
+    msg.steps.push({
+      id: PENDING_STEP_ID,
+      label: '准备处理',
+      description: '等待服务响应...',
+      status: 'active',
+    })
+  }
+
+  function markPendingStepAsGenerating(msg: AgentChatMessage) {
+    const step = msg.steps.find(item => item.id === PENDING_STEP_ID)
+    if (!step) return
+    step.label = '生成回复'
+    step.description = '输出中...'
+    step.status = 'active'
+  }
+
+  function removePendingStep(msg: AgentChatMessage) {
+    const index = msg.steps.findIndex(step => step.id === PENDING_STEP_ID)
+    if (index >= 0) msg.steps.splice(index, 1)
   }
 
   function appendArtifacts(msg: AgentChatMessage, artifacts: ArtifactItem[]) {

@@ -57,6 +57,27 @@ describe('AgentChat', () => {
     expect(streamAgentChatMock.mock.calls[1][1]).toMatchObject({ query: '你好' })
   })
 
+  it('shows thinking immediately while waiting for stream events', async () => {
+    let resolveStream: (() => void) | undefined
+    streamAgentChatMock.mockImplementationOnce(() => new Promise<void>(resolve => {
+      resolveStream = resolve
+    }))
+
+    const wrapper = mount(AgentChat)
+    await flushPromises()
+
+    await wrapper.find('textarea').setValue('延迟测试')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('处理中...')
+    expect(wrapper.text()).toContain('准备处理')
+    expect(wrapper.text()).toContain('等待服务响应...')
+
+    resolveStream?.()
+    await flushPromises()
+  })
+
   it('copies assistant response content', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', {
