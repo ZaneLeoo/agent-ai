@@ -84,7 +84,7 @@
 <script setup lang="ts">
 import type { ChatStatus } from 'ai'
 import { PanelLeftIcon, PlusIcon } from '@lucide/vue'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
 import AssistantMessage, { type AgentChatMessage } from '@/features/agent/AssistantMessage.vue'
@@ -93,6 +93,7 @@ import ChatWelcome from '@/features/agent/ChatWelcome.vue'
 import ConversationSidebar from '@/features/agent/ConversationSidebar.vue'
 import LoginPanel from '@/features/agent/LoginPanel.vue'
 import ThinkingSteps from '@/features/agent/ThinkingSteps.vue'
+import { useAgentAuth } from '@/features/agent/useAgentAuth'
 import {
   Conversation,
   ConversationContent,
@@ -109,7 +110,6 @@ import {
   type MessageItem,
 } from '@/api/agent'
 import type { AgentStreamEvent } from '@/types/agent'
-import { getCaptcha, getUserInfo, login } from '@/api/auth'
 import {
   getArtifactsFromStreamData,
   type ArtifactItem,
@@ -129,23 +129,22 @@ const conversations = ref<ConversationItem[]>([])
 const loadingConversations = ref(false)
 const loadingMessages = ref(false)
 const conversationError = ref('')
-const loggingIn = ref(false)
-const loginError = ref('')
-const showPassword = ref(false)
-const captchaEnabled = ref(false)
-const captchaImage = ref('')
-const loginForm = reactive({
-  username: '',
-  password: '',
-  code: '',
-  uuid: '',
-})
-
 const abortController = ref<AbortController | null>(null)
 const activeConversationId = ref<number | undefined>()
 const copiedMessageId = ref('')
 const mobileSidebarOpen = ref(false)
 let copiedResetTimer: ReturnType<typeof setTimeout> | undefined
+const {
+  loggingIn,
+  loginError,
+  showPassword,
+  captchaEnabled,
+  captchaImage,
+  loginForm,
+  handleLogin,
+  refreshCaptcha,
+  clearAuth,
+} = useAgentAuth(bootstrap, { onLoginSuccess: loadConversationList })
 
 const tips = [
   '帮我总结一下本月经营情况',
@@ -155,61 +154,13 @@ const tips = [
 
 const userInitial = computed(() => bootstrap.state.userName.slice(0, 1).toUpperCase() || '用')
 
-async function handleLogin() {
-  if (loggingIn.value) return
-  loginError.value = ''
-  const username = loginForm.username.trim()
-  const password = loginForm.password
-  if (!username || !password) {
-    loginError.value = '请输入用户名和密码'
-    return
-  }
-
-  loggingIn.value = true
-  try {
-    const result = await login(bootstrap.state.baseApi, {
-      username,
-      password,
-      code: captchaEnabled.value ? loginForm.code.trim() : undefined,
-      uuid: captchaEnabled.value ? loginForm.uuid : undefined,
-    })
-    const user = await getUserInfo(bootstrap.state.baseApi, result.token).catch(() => ({ nickName: '', userName: '' }))
-    bootstrap.setAuth(result.token, user.nickName || user.userName || username)
-    loginForm.password = ''
-    loginForm.code = ''
-    await loadConversationList()
-  } catch (e: unknown) {
-    loginError.value = e instanceof Error ? e.message : '登录失败'
-    if (captchaEnabled.value) refreshCaptcha()
-  } finally {
-    loggingIn.value = false
-  }
-}
-
-async function refreshCaptcha() {
-  try {
-    const captcha = await getCaptcha(bootstrap.state.baseApi)
-    captchaEnabled.value = captcha.captchaEnabled
-    loginForm.uuid = captcha.uuid || ''
-    captchaImage.value = captcha.img ? `data:image/jpeg;base64,${captcha.img}` : ''
-    if (!captcha.captchaEnabled) {
-      loginForm.code = ''
-    }
-  } catch {
-    captchaEnabled.value = false
-    captchaImage.value = ''
-    loginForm.uuid = ''
-  }
-}
-
 function handleLogout() {
   stopStream()
-  bootstrap.clearAuth()
+  clearAuth()
   conversations.value = []
   messages.value = []
   activeConversationId.value = undefined
   conversationError.value = ''
-  refreshCaptcha()
 }
 
 function handleSuggestionClick(tip: string) {
