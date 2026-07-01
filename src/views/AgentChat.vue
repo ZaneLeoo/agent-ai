@@ -104,27 +104,11 @@
       <Conversation class="h-full">
       <ConversationContent>
         <!-- 空状态 -->
-        <div
+        <ChatWelcome
           v-if="messages.length === 0"
-          class="flex min-h-full flex-col items-center justify-center gap-6 p-8 text-center"
-        >
-          <SparklesIcon class="size-8 text-muted-foreground" />
-          <div class="space-y-1">
-            <h3 class="text-lg font-semibold">今天想分析什么？</h3>
-            <p class="text-sm text-muted-foreground">可以提问业务问题、分析经营数据，或直接生成可视化图表。</p>
-          </div>
-          <div class="grid w-full max-w-lg grid-cols-1 gap-3 sm:grid-cols-3">
-            <button
-              v-for="tip in tips"
-              :key="tip"
-              class="group flex flex-col items-start gap-2 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-accent"
-              @click="handleSuggestionClick(tip)"
-            >
-              <span class="text-sm leading-relaxed">{{ tip }}</span>
-              <span class="text-xs text-muted-foreground transition-transform group-hover:translate-x-0.5">→</span>
-            </button>
-          </div>
-        </div>
+          :tips="tips"
+          @select="handleSuggestionClick"
+        />
 
         <!-- 消息列表 -->
         <template v-for="(message, msgIdx) in messages" :key="message.id">
@@ -210,48 +194,7 @@
                   重试
                 </Button>
               </div>
-              <Sources
-                v-if="message.sources.length"
-                class="mt-4 w-full text-muted-foreground"
-              >
-                <SourcesTrigger
-                  :count="message.sources.length"
-                  class="group inline-flex w-fit rounded-md border bg-background px-3 py-2 text-sm shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/60"
-                >
-                  <BookOpenIcon class="size-4 text-muted-foreground transition-colors group-hover:text-primary" />
-                  <span class="font-medium text-foreground underline decoration-muted-foreground/50 underline-offset-4 group-hover:text-primary group-hover:decoration-primary">
-                    参考来源 {{ message.sources.length }}
-                  </span>
-                  <span class="text-xs text-muted-foreground">知识库召回</span>
-                  <ChevronDownIcon class="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-                </SourcesTrigger>
-                <SourcesContent class="w-full max-w-full">
-                  <Source
-                    v-for="source in message.sources.slice(0, 3)"
-                    :key="source.id"
-                    :href="`#${source.id}`"
-                    :title="source.title"
-                    class="block rounded-md border bg-background p-3 text-left no-underline transition-colors hover:bg-accent/40"
-                    @click.prevent
-                  >
-                    <div class="flex flex-wrap items-center gap-2 text-sm">
-                      <span class="font-medium text-foreground">{{ source.title }}</span>
-                      <span v-if="formatSourceScore(source.score)" class="text-xs text-muted-foreground">
-                        相关度 {{ formatSourceScore(source.score) }}
-                      </span>
-                    </div>
-                    <p class="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                      {{ source.content }}
-                    </p>
-                  </Source>
-                  <div
-                    v-if="message.sources.length > 3"
-                    class="text-xs text-muted-foreground"
-                  >
-                    还有 {{ message.sources.length - 3 }} 条来源暂未展开展示
-                  </div>
-                </SourcesContent>
-              </Sources>
+              <SourcesPanel :sources="message.sources" />
               <!-- 产物展示 -->
               <Artifact
                 v-for="(artifact, aIdx) in message.artifacts"
@@ -333,12 +276,14 @@
 <script setup lang="ts">
 import type { ChatStatus } from 'ai'
 import * as echarts from 'echarts'
-import { BookOpenIcon, CheckIcon, ChevronDownIcon, CopyIcon, EyeIcon, EyeOffIcon, PanelLeftIcon, PlusIcon, SparklesIcon } from '@lucide/vue'
+import { CheckIcon, CopyIcon, EyeIcon, EyeOffIcon, PanelLeftIcon, PlusIcon, SparklesIcon } from '@lucide/vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import ChatWelcome from '@/features/agent/ChatWelcome.vue'
 import ConversationSidebar from '@/features/agent/ConversationSidebar.vue'
+import SourcesPanel from '@/features/agent/SourcesPanel.vue'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -365,7 +310,6 @@ import {
 import { Artifact, ArtifactContent, ArtifactHeader, ArtifactTitle } from '@/components/ai-elements/artifact'
 import { Loader } from '@/components/ai-elements/loader'
 import { Shimmer } from '@/components/ai-elements/shimmer'
-import { Source, Sources, SourcesContent, SourcesTrigger } from '@/components/ai-elements/sources'
 import {
   deleteConversation,
   listConversations,
@@ -383,7 +327,6 @@ import {
   type ArtifactItem,
 } from '@/lib/artifacts'
 import {
-  formatSourceScore,
   getSourcesFromStreamData,
   type AgentSourceItem,
 } from '@/lib/sources'
