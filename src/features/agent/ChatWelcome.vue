@@ -9,18 +9,18 @@
       <button
         v-for="tip in tips"
         :key="tip"
-        class="group flex flex-col items-start gap-2 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-accent"
+        class="group flex min-h-28 flex-col items-start justify-between gap-4 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-accent"
         @click="emit('select', tip)"
       >
         <span class="text-sm leading-relaxed">{{ tip }}</span>
-        <span class="text-xs text-muted-foreground transition-transform group-hover:translate-x-0.5">-&gt;</span>
+        <ArrowRightIcon class="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
       </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { SparklesIcon } from '@lucide/vue'
+import { ArrowRightIcon, SparklesIcon } from '@lucide/vue'
 
 defineProps<{
   tips: string[]
