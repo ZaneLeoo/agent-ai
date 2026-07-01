@@ -82,18 +82,18 @@
 </template>
 
 <script setup lang="ts">
-import type { ChatStatus } from 'ai'
 import { PanelLeftIcon, PlusIcon } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
-import AssistantMessage, { type AgentChatMessage } from '@/features/agent/AssistantMessage.vue'
+import AssistantMessage from '@/features/agent/AssistantMessage.vue'
 import ChatComposer from '@/features/agent/ChatComposer.vue'
 import ChatWelcome from '@/features/agent/ChatWelcome.vue'
 import ConversationSidebar from '@/features/agent/ConversationSidebar.vue'
 import LoginPanel from '@/features/agent/LoginPanel.vue'
 import ThinkingSteps from '@/features/agent/ThinkingSteps.vue'
 import { useAgentAuth } from '@/features/agent/useAgentAuth'
+import { useAgentChat } from '@/features/agent/useAgentChat'
 import {
   Conversation,
   ConversationContent,
@@ -104,36 +104,32 @@ import {
   deleteConversation,
   listConversations,
   listMessages,
-  stopChat,
-  streamAgentChat,
   type ConversationItem,
-  type MessageItem,
 } from '@/api/agent'
-import type { AgentStreamEvent } from '@/types/agent'
-import {
-  getArtifactsFromStreamData,
-  type ArtifactItem,
-} from '@/lib/artifacts'
-import {
-  getSourcesFromStreamData,
-  type AgentSourceItem,
-} from '@/lib/sources'
-import { applyArtifactStep, applyNodeEvent } from '@/lib/steps'
-
-type ChatMessage = AgentChatMessage
 
 const bootstrap = createBootstrapStore()
-const messages = ref<ChatMessage[]>([])
-const status = ref<ChatStatus>('ready')
 const conversations = ref<ConversationItem[]>([])
 const loadingConversations = ref(false)
 const loadingMessages = ref(false)
 const conversationError = ref('')
-const abortController = ref<AbortController | null>(null)
 const activeConversationId = ref<number | undefined>()
-const copiedMessageId = ref('')
 const mobileSidebarOpen = ref(false)
-let copiedResetTimer: ReturnType<typeof setTimeout> | undefined
+const {
+  messages,
+  status,
+  copiedMessageId,
+  handleSuggestionClick,
+  handleSubmit,
+  retryMessage,
+  copyMessageContent,
+  stopStream,
+  toChatMessage,
+  clearMessages,
+  cleanupChat,
+} = useAgentChat(bootstrap, {
+  activeConversationId,
+  onConversationListChanged: loadConversationList,
+})
 const {
   loggingIn,
   loginError,
@@ -158,49 +154,9 @@ function handleLogout() {
   stopStream()
   clearAuth()
   conversations.value = []
-  messages.value = []
+  clearMessages()
   activeConversationId.value = undefined
   conversationError.value = ''
-}
-
-function handleSuggestionClick(tip: string) {
-  if (status.value !== 'ready') return
-  messages.value.push(createUserMessage(tip))
-  sendMessage(tip)
-}
-
-function createUserMessage(content: string): ChatMessage {
-  return {
-    id: `user-${Date.now()}`,
-    role: 'user',
-    content,
-    streaming: false,
-    steps: [],
-    thinkingOpen: false,
-    stopped: false,
-    failed: false,
-    error: '',
-    retryQuery: '',
-    artifacts: [],
-    sources: [],
-  }
-}
-
-function createAssistantMessage(content = '', retryQuery = ''): ChatMessage {
-  return {
-    id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    role: 'assistant',
-    content,
-    streaming: false,
-    steps: [],
-    thinkingOpen: false,
-    stopped: false,
-    failed: false,
-    error: '',
-    retryQuery,
-    artifacts: [],
-    sources: [],
-  }
 }
 
 async function loadConversationList() {
@@ -239,7 +195,7 @@ async function selectConversation(conversationId: number) {
 function startNewConversation() {
   if (status.value !== 'ready') return
   activeConversationId.value = undefined
-  messages.value = []
+  clearMessages()
   mobileSidebarOpen.value = false
 }
 
@@ -255,217 +211,6 @@ async function removeConversation(conversationId: number) {
   }
 }
 
-function toChatMessage(item: MessageItem): ChatMessage {
-  const msg: ChatMessage = {
-    id: `${item.role}-${item.id}`,
-    role: item.role,
-    content: item.content || '',
-    streaming: false,
-    steps: [],
-    thinkingOpen: false,
-    stopped: false,
-    failed: false,
-    error: '',
-    retryQuery: '',
-    artifacts: [],
-    sources: [],
-  }
-
-  const metadata = parseMetadata(item.metadata)
-  if (metadata) {
-    appendArtifacts(msg, getArtifactsFromStreamData(metadata))
-    appendSources(msg, getSourcesFromStreamData(metadata))
-  }
-  return msg
-}
-
-function parseMetadata(metadata?: string): Record<string, unknown> | null {
-  if (!metadata) return null
-  try {
-    const parsed = JSON.parse(metadata)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : null
-  } catch {
-    return null
-  }
-}
-
-async function handleSubmit(event: { text: string }) {
-  if (status.value === 'streaming') { stopStream(); return }
-  if (status.value !== 'ready') return
-  const text = event.text?.trim()
-  if (!text) return
-
-  messages.value.push(createUserMessage(text))
-
-  await sendMessage(text)
-}
-
-async function retryMessage(message: ChatMessage) {
-  if (status.value !== 'ready' || !message.retryQuery) return
-  messages.value.push(createUserMessage(message.retryQuery))
-  await sendMessage(message.retryQuery)
-}
-
-async function copyMessageContent(message: ChatMessage) {
-  if (!message.content || !navigator?.clipboard?.writeText) return
-  await navigator.clipboard.writeText(message.content)
-  copiedMessageId.value = message.id
-  if (copiedResetTimer) clearTimeout(copiedResetTimer)
-  copiedResetTimer = setTimeout(() => {
-    if (copiedMessageId.value === message.id) copiedMessageId.value = ''
-  }, 1600)
-}
-
-async function sendMessage(text: string) {
-  const assistant = createAssistantMessage('', text)
-  assistant.streaming = true
-  assistant.thinkingOpen = true
-  messages.value.push(assistant)
-  const idx = messages.value.length - 1
-  status.value = 'submitted'
-
-  abortController.value = new AbortController()
-
-  try {
-    await streamAgentChat(
-      bootstrap.state,
-      { conversationId: activeConversationId.value, query: text, inputs: {} },
-      (event) => handleStreamEvent(idx, event),
-      abortController.value.signal,
-    )
-  } catch (e: unknown) {
-    if (e instanceof DOMException && e.name === 'AbortError') return
-    messages.value[idx].error = e instanceof Error ? e.message : '请求失败'
-    messages.value[idx].failed = true
-    completeActiveSteps(messages.value[idx])
-  } finally {
-    messages.value[idx].streaming = false
-    status.value = 'ready'
-    abortController.value = null
-    loadConversationList()
-  }
-}
-
-function handleStreamEvent(idx: number, event: AgentStreamEvent) {
-  const msg = messages.value[idx]
-  if (!msg) return
-
-  // 首个事件到达，切换为流式状态
-  if (status.value === 'submitted') status.value = 'streaming'
-
-  const { event: type, data } = event
-
-  switch (type) {
-    case 'conversation': {
-      if (data.conversationId) activeConversationId.value = data.conversationId
-      appendArtifacts(msg, getArtifactsFromStreamData(data))
-      appendSources(msg, getSourcesFromStreamData(data))
-      break
-    }
-    case 'message': {
-      if (data.content) msg.content += data.content
-      break
-    }
-    case 'message_replace': {
-      if (data.content) msg.content = data.content
-      break
-    }
-    case 'node': {
-      applyNodeEvent(msg.steps, data)
-      break
-    }
-    case 'workflow': {
-      if (data.event === 'workflow_finished') {
-        // 全部完成后自动折叠
-        for (const step of msg.steps) step.status = 'complete'
-        setTimeout(() => { if (messages.value[idx]) messages.value[idx].thinkingOpen = false }, 1500)
-      }
-      break
-    }
-    case 'artifact': {
-      appendArtifacts(msg, getArtifactsFromStreamData(data))
-      break
-    }
-    case 'sources':
-    case 'message_end': {
-      appendSources(msg, getSourcesFromStreamData(data))
-      break
-    }
-    case 'done': {
-      msg.streaming = false
-      status.value = 'ready'
-      // 标记全部步骤完成
-      for (const step of msg.steps) step.status = 'complete'
-      setTimeout(() => { if (messages.value[idx]) messages.value[idx].thinkingOpen = false }, 1000)
-      break
-    }
-    case 'error': {
-      msg.error = data.message || '服务端错误'
-      msg.streaming = false
-      msg.failed = true
-      completeActiveSteps(msg)
-      status.value = 'ready'
-      break
-    }
-    case 'unknown':
-      break
-  }
-}
-
-function completeActiveSteps(msg: ChatMessage) {
-  for (const step of msg.steps) {
-    if (step.status === 'active') step.status = 'complete'
-  }
-}
-
-function appendArtifacts(msg: ChatMessage, artifacts: ArtifactItem[]) {
-  for (const artifact of artifacts) {
-    msg.artifacts.push(artifact)
-    applyArtifactStep(msg.steps, artifact)
-  }
-}
-
-function appendSources(msg: ChatMessage, sources: AgentSourceItem[]) {
-  const existing = new Set(msg.sources.map(source => source.id))
-  for (const source of sources) {
-    if (!existing.has(source.id)) {
-      msg.sources.push(source)
-      existing.add(source.id)
-    }
-  }
-}
-
-function stopStream() {
-  abortController.value?.abort()
-  const conversationId = activeConversationId.value
-  if (conversationId) {
-    stopChat(bootstrap.state, conversationId).catch(() => {})
-  }
-  const idx = findLastAssistantIndex()
-  if (idx >= 0) {
-    messages.value[idx].streaming = false
-    messages.value[idx].stopped = true
-    messages.value[idx].thinkingOpen = false
-    for (const step of messages.value[idx].steps) {
-      if (step.status === 'active') step.status = 'complete'
-    }
-  }
-  status.value = 'ready'
-}
-
-onBeforeUnmount(() => {
-  if (copiedResetTimer) clearTimeout(copiedResetTimer)
-})
-
-function findLastAssistantIndex(): number {
-  for (let i = messages.value.length - 1; i >= 0; i--) {
-    if (messages.value[i].role === 'assistant') return i
-  }
-  return -1
-}
-
 onMounted(() => {
   bootstrap.start()
   loadConversationList()
@@ -477,5 +222,5 @@ watch(() => bootstrap.state.ready, (ready) => {
 watch(() => bootstrap.state.token, (token) => {
   if (!token) refreshCaptcha()
 })
-onBeforeUnmount(() => { stopStream(); bootstrap.stop() })
+onBeforeUnmount(() => { cleanupChat(); bootstrap.stop() })
 </script>
