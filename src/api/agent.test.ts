@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSseFrame } from './agent'
+import { parseRawSseFrame, parseSseFrame } from './agent'
 
 describe('parseSseFrame', () => {
   it('parses named JSON events', () => {
@@ -9,10 +9,18 @@ describe('parseSseFrame', () => {
     })
   })
 
-  it('keeps plain text payloads', () => {
-    expect(parseSseFrame('data: hello')).toEqual({
+  it('keeps plain text payloads in raw parsing', () => {
+    expect(parseRawSseFrame('data: hello')).toEqual({
       event: 'message',
       data: 'hello',
+    })
+  })
+
+  it('normalizes unknown events', () => {
+    expect(parseSseFrame('event: custom\ndata: {"value":1}')).toEqual({
+      event: 'unknown',
+      originalEvent: 'custom',
+      data: { value: 1 },
     })
   })
 })

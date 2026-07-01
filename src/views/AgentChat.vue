@@ -375,6 +375,7 @@ import {
   type ConversationItem,
   type MessageItem,
 } from '@/api/agent'
+import type { AgentStreamEvent } from '@/types/agent'
 import { getCaptcha, getUserInfo, login } from '@/api/auth'
 import {
   getArtifactsFromStreamData,
@@ -692,7 +693,7 @@ async function sendMessage(text: string) {
   }
 }
 
-function handleStreamEvent(idx: number, event: { event: string; data: unknown }) {
+function handleStreamEvent(idx: number, event: AgentStreamEvent) {
   const msg = messages.value[idx]
   if (!msg) return
 
@@ -703,29 +704,25 @@ function handleStreamEvent(idx: number, event: { event: string; data: unknown })
 
   switch (type) {
     case 'conversation': {
-      const d = data as { conversationId?: number }
-      if (d.conversationId) activeConversationId.value = d.conversationId
+      if (data.conversationId) activeConversationId.value = data.conversationId
       appendArtifacts(msg, getArtifactsFromStreamData(data))
       appendSources(msg, getSourcesFromStreamData(data))
       break
     }
     case 'message': {
-      const d = data as { content?: string }
-      if (d.content) msg.content += d.content
+      if (data.content) msg.content += data.content
       break
     }
     case 'message_replace': {
-      const d = data as { content?: string }
-      if (d.content) msg.content = d.content
+      if (data.content) msg.content = data.content
       break
     }
     case 'node': {
-      applyNodeEvent(msg.steps, data as Parameters<typeof applyNodeEvent>[1])
+      applyNodeEvent(msg.steps, data)
       break
     }
     case 'workflow': {
-      const d = data as { event?: string; status?: string }
-      if (d.event === 'workflow_finished') {
+      if (data.event === 'workflow_finished') {
         // 全部完成后自动折叠
         for (const step of msg.steps) step.status = 'complete'
         setTimeout(() => { if (messages.value[idx]) messages.value[idx].thinkingOpen = false }, 1500)
@@ -750,14 +747,15 @@ function handleStreamEvent(idx: number, event: { event: string; data: unknown })
       break
     }
     case 'error': {
-      const d = data as { message?: string }
-      msg.error = d.message || '服务端错误'
+      msg.error = data.message || '服务端错误'
       msg.streaming = false
       msg.failed = true
       completeActiveSteps(msg)
       status.value = 'ready'
       break
     }
+    case 'unknown':
+      break
   }
 }
 

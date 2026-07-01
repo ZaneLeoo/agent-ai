@@ -1,5 +1,6 @@
 import type { BootstrapState } from '@/lib/bootstrap'
-import type { AgentChatRequest, AgentStreamEvent } from '@/types/agent'
+import { normalizeAgentStreamEvent } from '@/lib/stream-events'
+import type { AgentChatRequest, AgentRawStreamEvent, AgentStreamEvent } from '@/types/agent'
 import { requestJson, withBaseApi } from './http'
 
 export interface ConversationItem {
@@ -78,6 +79,11 @@ export async function streamAgentChat(
 }
 
 export function parseSseFrame(frame: string): AgentStreamEvent | null {
+  const raw = parseRawSseFrame(frame)
+  return raw ? normalizeAgentStreamEvent(raw) : null
+}
+
+export function parseRawSseFrame(frame: string): AgentRawStreamEvent | null {
   const lines = frame.split(/\r?\n/).filter(Boolean)
   if (!lines.length) return null
 
