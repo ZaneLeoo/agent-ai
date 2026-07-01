@@ -1,3 +1,5 @@
+import { parseDifyNode } from './dify-node'
+
 export interface ThinkingStep {
   id: string
   label: string
@@ -83,16 +85,10 @@ function formatElapsedTime(value: unknown) {
 }
 
 function mapNodeLabel(data: NodeStreamData) {
-  const title = data.title || ''
-  const nodeType = data.nodeType || ''
-
-  if (nodeType === 'start' || /用户输入|开始/.test(title)) return '理解问题'
-  if (nodeType === 'question-classifier' || /问题分类|意图|分类器/.test(title)) return '识别意图'
-  if (/图表|BI|chart|可视化/i.test(title)) return '生成图表'
-  if (nodeType === 'answer' || /直接回复|回复|回答/.test(title)) return '整理回答'
-  if (nodeType === 'llm' || /大模型|LLM/i.test(title)) return '生成回答'
-
-  return title || nodeType || '处理步骤'
+  const parsed = parseDifyNode(data.title, data.nodeType)
+  return parsed.kind === 'generic'
+    ? data.title || data.nodeType || parsed.displayLabel
+    : parsed.displayLabel
 }
 
 function describeArtifact(artifact: ArtifactStepData) {

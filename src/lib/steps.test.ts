@@ -21,14 +21,33 @@ describe('applyNodeEvent', () => {
     expect(steps).toEqual([
       {
         id: 'step:用户输入',
-        label: '理解问题',
+        label: '用户输入',
         description: '1.2 s',
         status: 'complete',
       },
     ])
   })
 
-  it('maps dify node titles to user-facing labels', () => {
+  it('maps standard dify node title prefixes to user-facing labels', () => {
+    const steps: ThinkingStep[] = []
+
+    applyNodeEvent(steps, {
+      event: 'node_finished',
+      title: '[知识] 销售知识检索',
+      nodeType: 'llm',
+      status: 'succeeded',
+      elapsedTime: 2.6,
+    })
+
+    expect(steps[0]).toMatchObject({
+      id: 'step:[知识] 销售知识检索',
+      label: '检索知识库',
+      description: '2.6 s',
+      status: 'complete',
+    })
+  })
+
+  it('falls back to legacy dify node types when no title prefix exists', () => {
     const steps: ThinkingStep[] = []
 
     applyNodeEvent(steps, {
@@ -39,12 +58,7 @@ describe('applyNodeEvent', () => {
       elapsedTime: 2.6,
     })
 
-    expect(steps[0]).toMatchObject({
-      id: 'step:问题分类器',
-      label: '识别意图',
-      description: '2.6 s',
-      status: 'complete',
-    })
+    expect(steps[0].label).toBe('识别意图')
   })
 
   it('hides near-zero durations behind a completed label', () => {
