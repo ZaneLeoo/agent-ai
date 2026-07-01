@@ -94,26 +94,16 @@ import LoginPanel from '@/features/agent/LoginPanel.vue'
 import ThinkingSteps from '@/features/agent/ThinkingSteps.vue'
 import { useAgentAuth } from '@/features/agent/useAgentAuth'
 import { useAgentChat } from '@/features/agent/useAgentChat'
+import { useConversations } from '@/features/agent/useConversations'
 import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
 import { Loader } from '@/components/ai-elements/loader'
-import {
-  deleteConversation,
-  listConversations,
-  listMessages,
-  type ConversationItem,
-} from '@/api/agent'
 
 const bootstrap = createBootstrapStore()
-const conversations = ref<ConversationItem[]>([])
-const loadingConversations = ref(false)
-const loadingMessages = ref(false)
-const conversationError = ref('')
 const activeConversationId = ref<number | undefined>()
-const mobileSidebarOpen = ref(false)
 const {
   messages,
   status,
@@ -128,7 +118,24 @@ const {
   cleanupChat,
 } = useAgentChat(bootstrap, {
   activeConversationId,
-  onConversationListChanged: loadConversationList,
+  onConversationListChanged: () => loadConversationList(),
+})
+const {
+  conversations,
+  loadingConversations,
+  conversationError,
+  mobileSidebarOpen,
+  loadConversationList,
+  selectConversation,
+  startNewConversation,
+  removeConversation,
+  clearConversationState,
+} = useConversations(bootstrap, {
+  activeConversationId,
+  status,
+  messages,
+  toChatMessage,
+  clearMessages,
 })
 const {
   loggingIn,
@@ -153,62 +160,8 @@ const userInitial = computed(() => bootstrap.state.userName.slice(0, 1).toUpperC
 function handleLogout() {
   stopStream()
   clearAuth()
-  conversations.value = []
   clearMessages()
-  activeConversationId.value = undefined
-  conversationError.value = ''
-}
-
-async function loadConversationList() {
-  if (!bootstrap.state.ready || !bootstrap.state.token) return
-  loadingConversations.value = true
-  conversationError.value = ''
-  try {
-    conversations.value = await listConversations(bootstrap.state)
-  } catch (e: unknown) {
-    conversationError.value = e instanceof Error ? e.message : '会话加载失败'
-  } finally {
-    loadingConversations.value = false
-  }
-}
-
-async function loadConversation(conversationId: number) {
-  if (status.value !== 'ready' || loadingMessages.value) return
-  loadingMessages.value = true
-  conversationError.value = ''
-  try {
-    const items = await listMessages(bootstrap.state, conversationId)
-    activeConversationId.value = conversationId
-    messages.value = items.map(toChatMessage)
-  } catch (e: unknown) {
-    conversationError.value = e instanceof Error ? e.message : '消息加载失败'
-  } finally {
-    loadingMessages.value = false
-  }
-}
-
-async function selectConversation(conversationId: number) {
-  await loadConversation(conversationId)
-  mobileSidebarOpen.value = false
-}
-
-function startNewConversation() {
-  if (status.value !== 'ready') return
-  activeConversationId.value = undefined
-  clearMessages()
-  mobileSidebarOpen.value = false
-}
-
-async function removeConversation(conversationId: number) {
-  if (status.value !== 'ready') return
-  conversationError.value = ''
-  try {
-    await deleteConversation(bootstrap.state, conversationId)
-    conversations.value = conversations.value.filter(item => item.id !== conversationId)
-    if (activeConversationId.value === conversationId) startNewConversation()
-  } catch (e: unknown) {
-    conversationError.value = e instanceof Error ? e.message : '删除会话失败'
-  }
+  clearConversationState()
 }
 
 onMounted(() => {
