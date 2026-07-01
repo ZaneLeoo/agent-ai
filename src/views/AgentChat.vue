@@ -56,66 +56,13 @@
             :stopped="message.stopped"
           />
 
-          <Message
-            :from="message.role"
-            :class="message.role === 'assistant' ? 'w-full max-w-none' : undefined"
-          >
-            <MessageContent
-              :class="message.role === 'assistant' ? 'w-full max-w-full gap-3 overflow-visible' : 'min-w-0'"
-            >
-              <MessageResponse
-                v-if="message.content"
-                :content="message.content"
-                class="h-auto min-h-0 w-full"
-              />
-              <div
-                v-if="message.role === 'assistant' && message.content"
-                class="mt-2 flex justify-end"
-              >
-                <Button
-                  class="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-                  size="sm"
-                  variant="ghost"
-                  type="button"
-                  @click="copyMessageContent(message)"
-                >
-                  <CheckIcon v-if="copiedMessageId === message.id" class="size-3.5" />
-                  <CopyIcon v-else class="size-3.5" />
-                  {{ copiedMessageId === message.id ? '已复制' : '复制' }}
-                </Button>
-              </div>
-              <div
-                v-if="message.stopped"
-                class="mt-2 flex items-center gap-1.5 text-xs text-destructive"
-              >
-                <span class="block size-1.5 rounded-full bg-destructive" />
-                已停止生成
-              </div>
-              <div
-                v-if="message.error"
-                class="mt-2 flex flex-wrap items-center gap-2 text-xs text-destructive"
-              >
-                <span>{{ message.error }}</span>
-                <Button
-                  v-if="message.retryQuery"
-                  class="h-7 px-2 text-xs"
-                  size="sm"
-                  variant="outline"
-                  type="button"
-                  :disabled="status !== 'ready'"
-                  @click="retryMessage(message)"
-                >
-                  重试
-                </Button>
-              </div>
-              <SourcesPanel :sources="message.sources" />
-              <AgentArtifact
-                v-for="(artifact, aIdx) in message.artifacts"
-                :key="`${message.id}-artifact-${aIdx}`"
-                :artifact="artifact"
-              />
-            </MessageContent>
-          </Message>
+          <AssistantMessage
+            :copied="copiedMessageId === message.id"
+            :message="message"
+            :retry-disabled="status !== 'ready'"
+            @copy="copyMessageContent"
+            @retry="retryMessage"
+          />
         </template>
 
         <Loader v-if="status === 'submitted'" class="mx-auto mt-4" />
@@ -124,17 +71,7 @@
     </Conversation>
 
     <!-- 输入区域 -->
-    <PromptInput class="mt-4 w-full" @submit="handleSubmit">
-      <PromptInputBody>
-        <PromptInputTextarea
-          placeholder="输入你的问题... (Enter 发送)"
-          :disabled="status !== 'ready'"
-        />
-      </PromptInputBody>
-      <PromptInputFooter>
-        <PromptInputSubmit :status="status" />
-      </PromptInputFooter>
-    </PromptInput>
+    <ChatComposer :status="status" @submit="handleSubmit" />
 
     <!-- Token 提示 -->
     <div v-if="!bootstrap.state.token" class="mt-2 text-center text-xs text-muted-foreground">
@@ -146,33 +83,21 @@
 
 <script setup lang="ts">
 import type { ChatStatus } from 'ai'
-import { CheckIcon, CopyIcon, PanelLeftIcon, PlusIcon } from '@lucide/vue'
+import { PanelLeftIcon, PlusIcon } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
-import AgentArtifact from '@/features/agent/AgentArtifact.vue'
+import AssistantMessage, { type AgentChatMessage } from '@/features/agent/AssistantMessage.vue'
+import ChatComposer from '@/features/agent/ChatComposer.vue'
 import ChatWelcome from '@/features/agent/ChatWelcome.vue'
 import ConversationSidebar from '@/features/agent/ConversationSidebar.vue'
 import LoginPanel from '@/features/agent/LoginPanel.vue'
-import SourcesPanel from '@/features/agent/SourcesPanel.vue'
 import ThinkingSteps from '@/features/agent/ThinkingSteps.vue'
 import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from '@/components/ai-elements/message'
-import {
-  PromptInput,
-  PromptInputBody,
-  PromptInputFooter,
-  PromptInputSubmit,
-  PromptInputTextarea,
-} from '@/components/ai-elements/prompt-input'
 import { Loader } from '@/components/ai-elements/loader'
 import {
   deleteConversation,
@@ -193,22 +118,9 @@ import {
   getSourcesFromStreamData,
   type AgentSourceItem,
 } from '@/lib/sources'
-import { applyArtifactStep, applyNodeEvent, type ThinkingStep } from '@/lib/steps'
+import { applyArtifactStep, applyNodeEvent } from '@/lib/steps'
 
-interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  streaming: boolean
-  steps: ThinkingStep[]
-  thinkingOpen: boolean
-  stopped: boolean
-  failed: boolean
-  error: string
-  retryQuery: string
-  artifacts: ArtifactItem[]
-  sources: AgentSourceItem[]
-}
+type ChatMessage = AgentChatMessage
 
 const bootstrap = createBootstrapStore()
 const messages = ref<ChatMessage[]>([])
