@@ -195,54 +195,11 @@
                 </Button>
               </div>
               <SourcesPanel :sources="message.sources" />
-              <!-- 产物展示 -->
-              <Artifact
+              <AgentArtifact
                 v-for="(artifact, aIdx) in message.artifacts"
                 :key="`${message.id}-artifact-${aIdx}`"
-                class="mt-1 w-full max-w-full"
-              >
-                <ArtifactHeader>
-                  <ArtifactTitle>{{ artifact.title }}</ArtifactTitle>
-                </ArtifactHeader>
-                <ArtifactContent class="p-4">
-                  <div
-                    v-if="artifact.type === 'chart'"
-                    :ref="(el) => setChartRef(message.id, aIdx, el as HTMLElement)"
-                    class="h-[300px] min-h-[280px] w-full"
-                  />
-                  <div v-else-if="artifact.type === 'table'" class="overflow-x-auto p-4">
-                    <table class="w-full text-sm">
-                      <thead>
-                        <tr class="border-b">
-                          <th
-                            v-for="col in normalizeTablePayload(artifact.payload).columns"
-                            :key="col"
-                            class="px-3 py-2 text-left font-medium text-muted-foreground"
-                          >
-                            {{ col }}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr
-                          v-for="(row, rIdx) in normalizeTablePayload(artifact.payload).rows"
-                          :key="rIdx"
-                          class="border-b last:border-0"
-                        >
-                          <td
-                            v-for="col in normalizeTablePayload(artifact.payload).columns"
-                            :key="col"
-                            class="px-3 py-2"
-                          >
-                            {{ row[col] }}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  <pre v-else class="p-4 text-xs text-muted-foreground">{{ JSON.stringify(artifact.payload, null, 2) }}</pre>
-                </ArtifactContent>
-              </Artifact>
+                :artifact="artifact"
+              />
             </MessageContent>
           </Message>
         </template>
@@ -275,12 +232,12 @@
 
 <script setup lang="ts">
 import type { ChatStatus } from 'ai'
-import * as echarts from 'echarts'
 import { CheckIcon, CopyIcon, EyeIcon, EyeOffIcon, PanelLeftIcon, PlusIcon, SparklesIcon } from '@lucide/vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import AgentArtifact from '@/features/agent/AgentArtifact.vue'
 import ChatWelcome from '@/features/agent/ChatWelcome.vue'
 import ConversationSidebar from '@/features/agent/ConversationSidebar.vue'
 import SourcesPanel from '@/features/agent/SourcesPanel.vue'
@@ -307,7 +264,6 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
 } from '@/components/ai-elements/prompt-input'
-import { Artifact, ArtifactContent, ArtifactHeader, ArtifactTitle } from '@/components/ai-elements/artifact'
 import { Loader } from '@/components/ai-elements/loader'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import {
@@ -323,7 +279,6 @@ import type { AgentStreamEvent } from '@/types/agent'
 import { getCaptcha, getUserInfo, login } from '@/api/auth'
 import {
   getArtifactsFromStreamData,
-  normalizeTablePayload,
   type ArtifactItem,
 } from '@/lib/artifacts'
 import {
@@ -444,7 +399,6 @@ function handleLogout() {
   messages.value = []
   activeConversationId.value = undefined
   conversationError.value = ''
-  disposeCharts()
   refreshCaptcha()
 }
 
@@ -509,8 +463,6 @@ async function loadConversation(conversationId: number) {
     const items = await listMessages(bootstrap.state, conversationId)
     activeConversationId.value = conversationId
     messages.value = items.map(toChatMessage)
-    await nextTick()
-    renderAllCharts()
   } catch (e: unknown) {
     conversationError.value = e instanceof Error ? e.message : '消息加载失败'
   } finally {
@@ -528,7 +480,6 @@ function startNewConversation() {
   activeConversationId.value = undefined
   messages.value = []
   mobileSidebarOpen.value = false
-  disposeCharts()
 }
 
 async function removeConversation(conversationId: number) {
@@ -743,94 +694,7 @@ function stopStream() {
   status.value = 'ready'
 }
 
-// ---- 图表渲染 ----
-const chartRefs = new Map<string, HTMLElement>()
-const chartInstances = new Map<string, echarts.ECharts>()
-
-function chartKey(msgId: string, aIdx: number) { return `${msgId}::${aIdx}` }
-
-function setChartRef(msgId: string, aIdx: number, el: unknown) {
-  if (!(el instanceof HTMLElement)) return
-  const key = chartKey(msgId, aIdx)
-  chartRefs.set(key, el)
-  if (!chartInstances.has(key)) {
-    nextTick(() => renderChart(key))
-  }
-}
-
-function renderChart(key: string) {
-  const el = chartRefs.get(key)
-  if (!el) return
-
-  const [msgId, aIdxStr] = key.split('::')
-  const msg = messages.value.find(m => m.id === msgId)
-  const artifact = msg?.artifacts[Number(aIdxStr)]
-  if (!artifact || artifact.type !== 'chart') return
-
-  const payload = artifact.payload as {
-    chartType?: string
-    categories?: string[]
-    series?: Array<{ name: string; data: number[] }>
-  }
-
-  let instance = chartInstances.get(key)
-  if (!instance) {
-    instance = echarts.init(el)
-    chartInstances.set(key, instance)
-  }
-
-  const chartType = payload.chartType || 'bar'
-  const categories = payload.categories || []
-  instance.setOption({
-    color: ['#4f46e5', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'],
-    tooltip: { trigger: chartType === 'pie' ? 'item' : 'axis' },
-    grid: { left: '3%', right: '3%', top: '10%', bottom: '10%', containLabel: true },
-    xAxis: {
-      type: 'category',
-      data: categories,
-      axisTick: { show: false },
-      axisLabel: { interval: 0 },
-    },
-    yAxis: {
-      type: 'value',
-      min: chartType === 'bar' ? 0 : undefined,
-      splitLine: { lineStyle: { type: 'dashed' } },
-    },
-    series: (payload.series || []).map(s => ({
-      name: s.name, type: chartType, data: s.data,
-      ...(chartType === 'bar' ? { barMaxWidth: 28, itemStyle: { borderRadius: [4, 4, 0, 0] } } : {}),
-      ...(chartType === 'line' ? { smooth: true, showSymbol: false, lineStyle: { width: 3 } } : {}),
-    })),
-  }, true)
-  requestAnimationFrame(() => instance?.resize())
-}
-
-function renderAllCharts() {
-  for (const key of chartRefs.keys()) renderChart(key)
-}
-
-function disposeCharts() {
-  for (const instance of chartInstances.values()) instance.dispose()
-  chartInstances.clear()
-  chartRefs.clear()
-}
-
-// 只追踪 artifact 数量变化触发渲染
-watch(() => messages.value.reduce((c, m) => c + m.artifacts.length, 0), () => {
-  nextTick(() => {
-    for (const key of chartRefs.keys()) {
-      if (!chartInstances.has(key)) renderChart(key)
-    }
-  })
-})
-
-// 窗口 resize
-window.addEventListener('resize', () => {
-  for (const instance of chartInstances.values()) instance.resize()
-})
-
 onBeforeUnmount(() => {
-  disposeCharts()
   if (copiedResetTimer) clearTimeout(copiedResetTimer)
 })
 
