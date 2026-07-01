@@ -111,36 +111,14 @@
         />
 
         <!-- 消息列表 -->
-        <template v-for="(message, msgIdx) in messages" :key="message.id">
-          <ChainOfThought
+        <template v-for="message in messages" :key="message.id">
+          <ThinkingSteps
             v-if="message.role === 'assistant' && message.steps.length"
-            v-model="message.thinkingOpen"
-            class="mb-3"
-          >
-            <ChainOfThoughtHeader>
-              <template v-if="isThinking(msgIdx)">
-                <Shimmer :duration="1.5">处理中...</Shimmer>
-              </template>
-              <template v-else-if="message.stopped">
-                <span class="text-destructive">已取消</span>
-              </template>
-              <template v-else-if="message.failed">
-                <span class="text-destructive">执行失败</span>
-              </template>
-              <template v-else>
-                <span>处理完成 · {{ doneCount(message) }}/{{ message.steps.length }} 步</span>
-              </template>
-            </ChainOfThoughtHeader>
-            <ChainOfThoughtContent>
-              <ChainOfThoughtStep
-                v-for="step in message.steps"
-                :key="step.id"
-                :label="step.label"
-                :description="step.description"
-                :status="step.status"
-              />
-            </ChainOfThoughtContent>
-          </ChainOfThought>
+            v-model:open="message.thinkingOpen"
+            :failed="message.failed"
+            :steps="message.steps"
+            :stopped="message.stopped"
+          />
 
           <Message
             :from="message.role"
@@ -241,12 +219,7 @@ import AgentArtifact from '@/features/agent/AgentArtifact.vue'
 import ChatWelcome from '@/features/agent/ChatWelcome.vue'
 import ConversationSidebar from '@/features/agent/ConversationSidebar.vue'
 import SourcesPanel from '@/features/agent/SourcesPanel.vue'
-import {
-  ChainOfThought,
-  ChainOfThoughtContent,
-  ChainOfThoughtHeader,
-  ChainOfThoughtStep,
-} from '@/components/ai-elements/chain-of-thought'
+import ThinkingSteps from '@/features/agent/ThinkingSteps.vue'
 import {
   Conversation,
   ConversationContent,
@@ -265,7 +238,6 @@ import {
   PromptInputTextarea,
 } from '@/components/ai-elements/prompt-input'
 import { Loader } from '@/components/ai-elements/loader'
-import { Shimmer } from '@/components/ai-elements/shimmer'
 import {
   deleteConversation,
   listConversations,
@@ -334,16 +306,6 @@ const tips = [
 ]
 
 const userInitial = computed(() => bootstrap.state.userName.slice(0, 1).toUpperCase() || '用')
-
-function isThinking(msgIdx: number): boolean {
-  const msg = messages.value[msgIdx]
-  if (!msg || msg.role !== 'assistant') return false
-  return msg.steps.some(s => s.status === 'active')
-}
-
-function doneCount(msg: ChatMessage): number {
-  return msg.steps.filter(s => s.status === 'complete').length
-}
 
 async function handleLogin() {
   if (loggingIn.value) return
