@@ -1,5 +1,3 @@
-import { parseDifyNode } from './dify-node'
-
 export interface ThinkingStep {
   id: string
   label: string
@@ -7,12 +5,15 @@ export interface ThinkingStep {
   status: 'complete' | 'active' | 'pending'
 }
 
-export interface NodeStreamData {
-  event?: string
-  title?: string
-  nodeType?: string
-  status?: string
-  elapsedTime?: number
+export interface StepStreamData {
+  stepId?: number | string
+  stepType?: string
+  displayName?: string
+  summary?: string
+  message?: string
+  durationMs?: number
+  toolCallId?: number | string
+  toolCode?: string
 }
 
 export interface ArtifactStepData {
@@ -21,78 +22,121 @@ export interface ArtifactStepData {
   payload?: Record<string, unknown>
 }
 
-export function applyNodeEvent(steps: ThinkingStep[], data: NodeStreamData) {
-  const sourceLabel = data.title || data.nodeType || '节点'
-  const id = `step:${sourceLabel}`
+export function applyStepStarted(steps: ThinkingStep[], data: StepStreamData) {
+  const id = stepId(data)
   const existing = steps.find(step => step.id === id)
-  const patch = toStepPatch(data)
-  const label = mapNodeLabel(data)
-
   if (existing) {
-    existing.label = label
-    existing.status = patch.status
-    existing.description = patch.description
+    existing.label = stepLabel(data)
+    existing.status = 'active'
+    existing.description = activeDescription(data)
     return
   }
+  steps.push({
+    id,
+    label: stepLabel(data),
+    description: activeDescription(data),
+    status: 'active',
+  })
+}
 
+export function applyStepFinished(steps: ThinkingStep[], data: StepStreamData, failed = false) {
+  const id = stepId(data)
+  const existing = steps.find(step => step.id === id)
+  const patch = {
+    label: existing?.label || stepLabel(data),
+    description: failed ? data.message || '执行失败' : data.summary || formatDuration(data.durationMs),
+    status: 'complete' as const,
+  }
+  if (existing) Object.assign(existing, patch)
+  else steps.push({ id, ...patch })
+}
+
+export function applyToolStarted(steps: ThinkingStep[], data: StepStreamData) {
+  const id = toolStepId(data)
+  const existing = steps.find(step => step.id === id)
+  const label = existing?.label || `正在调用 ${toolLabel(data)}`
+  if (existing) {
+    existing.label = label
+    existing.description = activeDescription(data)
+    existing.status = 'active'
+    return
+  }
   steps.push({
     id,
     label,
-    description: patch.description,
-    status: patch.status,
+    description: activeDescription(data),
+    status: 'active',
   })
+}
+
+export function applyToolFinished(steps: ThinkingStep[], data: StepStreamData, failed = false) {
+  const id = toolStepId(data)
+  const existing = steps.find(step => step.id === id)
+  const toolName = toolLabel(data)
+  const patch = {
+    label: existing?.label || `正在调用 ${toolName}`,
+    description: failed
+      ? data.message || `${toolName} 调用失败`
+      : data.summary || `已获取 ${toolName} 结果`,
+    status: 'complete' as const,
+  }
+  if (existing) Object.assign(existing, patch)
+  else steps.push({ id, ...patch })
 }
 
 export function applyArtifactStep(steps: ThinkingStep[], artifact: ArtifactStepData) {
   steps.push({
     id: `artifact:${artifact.type}:${artifact.title || 'artifact'}`,
-    label: artifact.type === 'table' ? '数据表已生成' : '图表已生成',
+    label: artifact.type.toLowerCase() === 'table' ? '数据表已生成' : '图表已生成',
     description: describeArtifact(artifact),
     status: 'complete',
   })
 }
 
-function toStepPatch(data: NodeStreamData): Pick<ThinkingStep, 'description' | 'status'> {
-  if (data.status === 'error' || data.status === 'failed') {
-    return { status: 'complete', description: '执行出错' }
-  }
-
-  if (data.event === 'node_started') {
-    return { status: 'active', description: '执行中...' }
-  }
-
-  if (data.event === 'node_finished') {
-    return { status: 'complete', description: formatElapsedTime(data.elapsedTime) }
-  }
-
-  return { status: 'complete', description: '已完成' }
-}
-
-function formatElapsedTime(value: unknown) {
+function formatDuration(value: unknown) {
   if (typeof value !== 'number' || Number.isNaN(value)) {
     return '已完成'
   }
-
-  if (value < 0.1) {
-    return '已完成'
-  }
-
-  if (value < 1) {
-    return `${Math.round(value * 1000)} ms`
-  }
-
-  return `${value.toFixed(1)} s`
+  if (value < 1000) return `${Math.max(0, Math.round(value))} ms`
+  return `${(value / 1000).toFixed(1)} s`
 }
 
-function mapNodeLabel(data: NodeStreamData) {
-  const parsed = parseDifyNode(data.title, data.nodeType)
-  return parsed.kind === 'generic'
-    ? data.title || data.nodeType || parsed.displayLabel
-    : parsed.displayLabel
+function stepId(data: StepStreamData) {
+  return `step:${data.stepId ?? data.stepType ?? 'unknown'}`
+}
+
+function toolStepId(data: StepStreamData) {
+  if (data.stepId !== undefined && data.stepId !== null) return stepId(data)
+  return `tool:${data.toolCallId ?? data.toolCode ?? 'unknown'}`
+}
+
+function stepLabel(data: StepStreamData) {
+  if (data.displayName) return data.displayName
+  const labels: Record<string, string> = {
+    UNDERSTANDING: '正在理解需求',
+    DATA_QUERY: '正在查询业务数据',
+    DATA_ANALYSIS: '正在分析数据',
+    CHART_RENDER: '正在生成图表',
+    KNOWLEDGE_SEARCH: '正在检索知识库',
+    REALTIME_SEARCH: '正在检索实时信息',
+    CLARIFICATION: '正在确认需求',
+    FILE_GENERATION: '正在生成文件',
+    BUSINESS_ACTION: '正在执行业务操作',
+    RESPONSE_COMPOSE: '正在整理回答',
+  }
+  return labels[data.stepType || ''] || '正在处理'
+}
+
+function toolLabel(data: StepStreamData) {
+  return data.displayName || data.toolCode || '工具'
+}
+
+function activeDescription(data: StepStreamData) {
+  return data.summary || data.message || '执行中...'
 }
 
 function describeArtifact(artifact: ArtifactStepData) {
-  if (artifact.type === 'table') return '数据表'
+  if (artifact.type.toLowerCase() === 'table') return '数据表'
 
   const chartType = artifact.payload?.chartType
   if (chartType === 'bar') return '柱状图'

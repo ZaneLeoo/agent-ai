@@ -6,7 +6,7 @@
   >
     <ChainOfThoughtHeader>
       <template v-if="thinking">
-        <Shimmer :duration="1.5">处理中...</Shimmer>
+        <Shimmer :duration="1.5">{{ activeTitle }}</Shimmer>
       </template>
       <template v-else-if="stopped">
         <span class="text-destructive">已取消</span>
@@ -15,7 +15,7 @@
         <span class="text-destructive">执行失败</span>
       </template>
       <template v-else>
-        <span>处理完成 · {{ doneCount }}/{{ steps.length }} 步</span>
+        <span>思考完成 · {{ doneCount }}/{{ steps.length }} 步</span>
       </template>
     </ChainOfThoughtHeader>
     <ChainOfThoughtContent>
@@ -59,4 +59,8 @@ const openModel = computed({
 
 const thinking = computed(() => props.steps.some(step => step.status === 'active'))
 const doneCount = computed(() => props.steps.filter(step => step.status === 'complete').length)
+const activeTitle = computed(() => {
+  const active = props.steps.find(step => step.status === 'active')
+  return active ? `思考中 · ${active.label}` : '思考中...'
+})
 </script>

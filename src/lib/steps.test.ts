@@ -1,91 +1,59 @@
 import { describe, expect, it } from 'vitest'
-import { applyArtifactStep, applyNodeEvent, type ThinkingStep } from './steps'
+import {
+  applyArtifactStep,
+  applyStepFinished,
+  applyStepStarted,
+  applyToolFinished,
+  applyToolStarted,
+  type ThinkingStep,
+} from './steps'
 
-describe('applyNodeEvent', () => {
-  it('updates running descriptions when a node finishes', () => {
+describe('Agent V2 steps', () => {
+  it('updates a Java tool step by stable step id', () => {
     const steps: ThinkingStep[] = []
-
-    applyNodeEvent(steps, {
-      event: 'node_started',
-      title: '用户输入',
-      nodeType: 'start',
-    })
-    applyNodeEvent(steps, {
-      event: 'node_finished',
-      title: '用户输入',
-      nodeType: 'start',
-      status: 'succeeded',
-      elapsedTime: 1.2,
-    })
-
-    expect(steps).toEqual([
-      {
-        id: 'step:用户输入',
-        label: '用户输入',
-        description: '1.2 s',
-        status: 'complete',
-      },
-    ])
-  })
-
-  it('maps standard dify node title prefixes to user-facing labels', () => {
-    const steps: ThinkingStep[] = []
-
-    applyNodeEvent(steps, {
-      event: 'node_finished',
-      title: '[知识] 销售知识检索',
-      nodeType: 'llm',
-      status: 'succeeded',
-      elapsedTime: 2.6,
-    })
-
-    expect(steps[0]).toMatchObject({
-      id: 'step:[知识] 销售知识检索',
-      label: '检索知识库',
-      description: '2.6 s',
+    applyStepStarted(steps, { stepId: 7, stepType: 'DATA_QUERY', displayName: '正在查询业务数据' })
+    applyStepFinished(steps, { stepId: 7, stepType: 'DATA_QUERY', summary: '已查询12条数据', durationMs: 1250 })
+    expect(steps).toEqual([{
+      id: 'step:7',
+      label: '正在查询业务数据',
+      description: '已查询12条数据',
       status: 'complete',
-    })
+    }])
   })
 
-  it('falls back to legacy dify node types when no title prefix exists', () => {
+  it('maps semantic step types when no display name is supplied', () => {
     const steps: ThinkingStep[] = []
-
-    applyNodeEvent(steps, {
-      event: 'node_finished',
-      title: '问题分类器',
-      nodeType: 'question-classifier',
-      status: 'succeeded',
-      elapsedTime: 2.6,
-    })
-
-    expect(steps[0].label).toBe('识别意图')
+    applyStepStarted(steps, { stepId: 8, stepType: 'CHART_RENDER' })
+    expect(steps[0].label).toBe('正在生成图表')
   })
 
-  it('hides near-zero durations behind a completed label', () => {
+  it('maps realtime search steps for agent tools', () => {
     const steps: ThinkingStep[] = []
+    applyStepStarted(steps, { stepId: 'dify-tool:1:jina_search', stepType: 'REALTIME_SEARCH' })
+    expect(steps[0].label).toBe('正在检索实时信息')
+  })
 
-    applyNodeEvent(steps, {
-      event: 'node_finished',
-      title: '用户输入',
-      nodeType: 'start',
-      status: 'succeeded',
-      elapsedTime: 0.0001,
-    })
-
-    expect(steps[0].description).toBe('已完成')
+  it('uses tool events as a fallback step source', () => {
+    const steps: ThinkingStep[] = []
+    applyToolStarted(steps, { toolCallId: 'call-1', toolCode: '联网搜索' })
+    applyToolFinished(steps, { toolCallId: 'call-1', toolCode: '联网搜索' })
+    expect(steps).toEqual([{
+      id: 'tool:call-1',
+      label: '正在调用 联网搜索',
+      description: '已获取 联网搜索 结果',
+      status: 'complete',
+    }])
   })
 
   it('adds user-facing artifact steps', () => {
     const steps: ThinkingStep[] = []
-
     applyArtifactStep(steps, {
-      type: 'chart',
+      type: 'CHART',
       title: '季度销售BI柱状图（测试）',
       payload: { chartType: 'bar' },
     })
-
     expect(steps[0]).toEqual({
-      id: 'artifact:chart:季度销售BI柱状图（测试）',
+      id: 'artifact:CHART:季度销售BI柱状图（测试）',
       label: '图表已生成',
       description: '柱状图',
       status: 'complete',

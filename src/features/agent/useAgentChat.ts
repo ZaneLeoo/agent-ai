@@ -1,18 +1,31 @@
 import type { ChatStatus } from 'ai'
 import type { Ref } from 'vue'
 import { ref } from 'vue'
-import { stopChat, streamAgentChat, type MessageItem } from '@/api/agent'
-import type { AgentStreamEvent } from '@/types/agent'
+import {
+  cancelAgentRun,
+  createAgentRun,
+  streamAgentRun,
+  type MessageItem,
+} from '@/api/agent'
+import type { AgentV2StreamEvent } from '@/types/agent'
 import type { createBootstrapStore } from '@/lib/bootstrap'
 import {
   getArtifactsFromStreamData,
+  normalizeArtifact,
   type ArtifactItem,
 } from '@/lib/artifacts'
 import {
   getSourcesFromStreamData,
+  normalizeSource,
   type AgentSourceItem,
 } from '@/lib/sources'
-import { applyArtifactStep, applyNodeEvent } from '@/lib/steps'
+import {
+  applyArtifactStep,
+  applyStepFinished,
+  applyStepStarted,
+  applyToolFinished,
+  applyToolStarted,
+} from '@/lib/steps'
 import type { AgentChatMessage } from './AssistantMessage.vue'
 
 type BootstrapStore = ReturnType<typeof createBootstrapStore>
@@ -28,24 +41,23 @@ export function useAgentChat(
   const messages = ref<AgentChatMessage[]>([])
   const status = ref<ChatStatus>('ready')
   const abortController = ref<AbortController | null>(null)
+  const activeRunId = ref<number>()
   const copiedMessageId = ref('')
   let copiedResetTimer: ReturnType<typeof setTimeout> | undefined
 
   function handleSuggestionClick(tip: string) {
     if (status.value !== 'ready') return
     messages.value.push(createUserMessage(tip))
-    sendMessage(tip)
+    void sendMessage(tip)
   }
 
   async function handleSubmit(event: { text: string }) {
-    if (status.value === 'streaming') {
+    if (status.value === 'streaming' || status.value === 'submitted') {
       stopStream()
       return
     }
-    if (status.value !== 'ready') return
     const text = event.text?.trim()
     if (!text) return
-
     messages.value.push(createUserMessage(text))
     await sendMessage(text)
   }
@@ -74,44 +86,49 @@ export function useAgentChat(
     messages.value.push(assistant)
     const idx = messages.value.length - 1
     status.value = 'submitted'
-
     abortController.value = new AbortController()
 
     try {
-      await streamAgentChat(
+      const run = await createAgentRun(bootstrap.state, {
+        conversationId: options.activeConversationId.value,
+        query: text,
+        inputs: {},
+        contextRefs: {},
+      })
+      activeRunId.value = run.runId
+      options.activeConversationId.value = run.conversationId
+      status.value = 'streaming'
+      await streamAgentRun(
         bootstrap.state,
-        { conversationId: options.activeConversationId.value, query: text, inputs: {} },
+        run.runId,
         event => handleStreamEvent(idx, event),
         abortController.value.signal,
       )
-    } catch (e: unknown) {
-      if (e instanceof DOMException && e.name === 'AbortError') return
-      messages.value[idx].error = e instanceof Error ? e.message : '请求失败'
-      messages.value[idx].failed = true
-      completeActiveSteps(messages.value[idx])
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      const message = messages.value[idx]
+      if (message && !message.stopped) {
+        message.error = error instanceof Error ? error.message : '请求失败'
+        message.failed = true
+        completeActiveSteps(message)
+      }
     } finally {
-      messages.value[idx].streaming = false
+      const message = messages.value[idx]
+      if (message) message.streaming = false
       status.value = 'ready'
+      activeRunId.value = undefined
       abortController.value = null
-      options.onConversationListChanged?.()
+      await options.onConversationListChanged?.()
     }
   }
 
   function stopStream() {
+    const runId = activeRunId.value
     abortController.value?.abort()
-    const conversationId = options.activeConversationId.value
-    if (conversationId) {
-      stopChat(bootstrap.state, conversationId).catch(() => {})
-    }
+    if (runId) void cancelAgentRun(bootstrap.state, runId).catch(() => {})
     const idx = findLastAssistantIndex()
-    if (idx >= 0) {
-      messages.value[idx].streaming = false
-      messages.value[idx].stopped = true
-      messages.value[idx].thinkingOpen = false
-      for (const step of messages.value[idx].steps) {
-        if (step.status === 'active') step.status = 'complete'
-      }
-    }
+    if (idx >= 0) markStopped(messages.value[idx])
+    activeRunId.value = undefined
     status.value = 'ready'
   }
 
@@ -123,14 +140,13 @@ export function useAgentChat(
       streaming: false,
       steps: [],
       thinkingOpen: false,
-      stopped: false,
-      failed: false,
-      error: '',
+      stopped: item.status === 'stopped',
+      failed: item.status === 'failed',
+      error: item.errorMessage || '',
       retryQuery: '',
       artifacts: [],
       sources: [],
     }
-
     const metadata = parseMetadata(item.metadata)
     if (metadata) {
       appendArtifacts(msg, getArtifactsFromStreamData(metadata))
@@ -148,77 +164,88 @@ export function useAgentChat(
     if (copiedResetTimer) clearTimeout(copiedResetTimer)
   }
 
-  function handleStreamEvent(idx: number, event: AgentStreamEvent) {
+  function handleStreamEvent(idx: number, event: AgentV2StreamEvent) {
     const msg = messages.value[idx]
     if (!msg) return
-
-    if (status.value === 'submitted') status.value = 'streaming'
-
-    const { event: type, data } = event
-
-    switch (type) {
-      case 'conversation': {
-        if (data.conversationId) options.activeConversationId.value = data.conversationId
-        appendArtifacts(msg, getArtifactsFromStreamData(data))
-        appendSources(msg, getSourcesFromStreamData(data))
+    const data = event.data
+    switch (event.event) {
+      case 'run.created':
+        if (typeof data.conversationId === 'number') options.activeConversationId.value = data.conversationId
         break
-      }
-      case 'message': {
-        markPendingStepAsGenerating(msg)
-        if (data.content) msg.content += data.content
-        break
-      }
-      case 'message_replace': {
-        markPendingStepAsGenerating(msg)
-        if (data.content) msg.content = data.content
-        break
-      }
-      case 'node': {
+      case 'message.delta':
         removePendingStep(msg)
-        applyNodeEvent(msg.steps, data)
+        if (typeof data.content === 'string') msg.content += data.content
         break
-      }
-      case 'workflow': {
-        if (data.event === 'workflow_finished') {
-          for (const step of msg.steps) step.status = 'complete'
-          setTimeout(() => { if (messages.value[idx]) messages.value[idx].thinkingOpen = false }, 1500)
-        }
-        break
-      }
-      case 'artifact': {
+      case 'message.replaced':
         removePendingStep(msg)
-        appendArtifacts(msg, getArtifactsFromStreamData(data))
+        if (typeof data.content === 'string') msg.content = data.content
         break
-      }
-      case 'sources':
-      case 'message_end': {
-        appendSources(msg, getSourcesFromStreamData(data))
+      case 'step.started':
+        removePendingStep(msg)
+        applyStepStarted(msg.steps, data)
         break
-      }
-      case 'done': {
-        msg.streaming = false
-        status.value = 'ready'
-        for (const step of msg.steps) step.status = 'complete'
-        setTimeout(() => { if (messages.value[idx]) messages.value[idx].thinkingOpen = false }, 1000)
+      case 'step.completed':
+        applyStepFinished(msg.steps, data)
         break
-      }
-      case 'error': {
-        msg.error = data.message || '服务端错误'
-        msg.streaming = false
+      case 'step.failed':
+        applyStepFinished(msg.steps, data, true)
         msg.failed = true
-        completeActiveSteps(msg)
-        status.value = 'ready'
+        break
+      case 'artifact.created': {
+        const artifact = normalizeArtifact(data)
+        if (artifact) appendArtifacts(msg, [artifact])
         break
       }
-      case 'unknown':
+      case 'citation.created': {
+        const source = normalizeSource(data)
+        if (source) appendSources(msg, [source])
+        break
+      }
+      case 'approval.required':
+        msg.steps.push({
+          id: `approval:${String(data.toolCallId ?? Date.now())}`,
+          label: '等待确认',
+          description: typeof data.summary === 'string' ? data.summary : '需要你的确认后才能继续',
+          status: 'pending',
+        })
+        break
+      case 'run.completed':
+        finishMessage(msg)
+        break
+      case 'run.failed':
+        msg.error = typeof data.message === 'string' ? data.message : 'Agent 执行失败'
+        msg.failed = true
+        finishMessage(msg)
+        break
+      case 'run.cancelled':
+        markStopped(msg)
+        break
+      case 'tool.started':
+        removePendingStep(msg)
+        applyToolStarted(msg.steps, data)
+        break
+      case 'tool.completed':
+        applyToolFinished(msg.steps, data)
+        break
+      case 'tool.failed':
+        applyToolFinished(msg.steps, data, true)
+        msg.failed = true
         break
     }
   }
 
   function createUserMessage(content: string): AgentChatMessage {
+    return baseMessage('user', content)
+  }
+
+  function createAssistantMessage(content = '', retryQuery = ''): AgentChatMessage {
+    return { ...baseMessage('assistant', content), retryQuery }
+  }
+
+  function baseMessage(role: 'user' | 'assistant', content: string): AgentChatMessage {
     return {
-      id: `user-${Date.now()}`,
-      role: 'user',
+      id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      role,
       content,
       streaming: false,
       steps: [],
@@ -227,23 +254,6 @@ export function useAgentChat(
       failed: false,
       error: '',
       retryQuery: '',
-      artifacts: [],
-      sources: [],
-    }
-  }
-
-  function createAssistantMessage(content = '', retryQuery = ''): AgentChatMessage {
-    return {
-      id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      role: 'assistant',
-      content,
-      streaming: false,
-      steps: [],
-      thinkingOpen: false,
-      stopped: false,
-      failed: false,
-      error: '',
-      retryQuery,
       artifacts: [],
       sources: [],
     }
@@ -261,28 +271,27 @@ export function useAgentChat(
     }
   }
 
+  function finishMessage(msg: AgentChatMessage) {
+    msg.streaming = false
+    completeActiveSteps(msg)
+    removePendingStep(msg)
+    status.value = 'ready'
+  }
+
+  function markStopped(msg: AgentChatMessage) {
+    msg.streaming = false
+    msg.stopped = true
+    msg.thinkingOpen = false
+    completeActiveSteps(msg)
+    removePendingStep(msg)
+  }
+
   function completeActiveSteps(msg: AgentChatMessage) {
-    for (const step of msg.steps) {
-      if (step.status === 'active') step.status = 'complete'
-    }
+    for (const step of msg.steps) if (step.status === 'active') step.status = 'complete'
   }
 
   function ensurePendingStep(msg: AgentChatMessage) {
-    if (msg.steps.some(step => step.id === PENDING_STEP_ID)) return
-    msg.steps.push({
-      id: PENDING_STEP_ID,
-      label: '准备处理',
-      description: '等待服务响应...',
-      status: 'active',
-    })
-  }
-
-  function markPendingStepAsGenerating(msg: AgentChatMessage) {
-    const step = msg.steps.find(item => item.id === PENDING_STEP_ID)
-    if (!step) return
-    step.label = '生成回复'
-    step.description = '输出中...'
-    step.status = 'active'
+    msg.steps.push({ id: PENDING_STEP_ID, label: '正在理解需求', description: '准备选择下一步...', status: 'active' })
   }
 
   function removePendingStep(msg: AgentChatMessage) {
@@ -291,8 +300,12 @@ export function useAgentChat(
   }
 
   function appendArtifacts(msg: AgentChatMessage, artifacts: ArtifactItem[]) {
+    const ids = new Set(msg.artifacts.map(item => `${item.type}:${item.title}:${JSON.stringify(item.payload)}`))
     for (const artifact of artifacts) {
+      const key = `${artifact.type}:${artifact.title}:${JSON.stringify(artifact.payload)}`
+      if (ids.has(key)) continue
       msg.artifacts.push(artifact)
+      ids.add(key)
       applyArtifactStep(msg.steps, artifact)
     }
   }
@@ -307,7 +320,7 @@ export function useAgentChat(
     }
   }
 
-  function findLastAssistantIndex(): number {
+  function findLastAssistantIndex() {
     for (let i = messages.value.length - 1; i >= 0; i--) {
       if (messages.value[i].role === 'assistant') return i
     }
@@ -317,6 +330,7 @@ export function useAgentChat(
   return {
     messages,
     status,
+    activeRunId,
     copiedMessageId,
     handleSuggestionClick,
     handleSubmit,

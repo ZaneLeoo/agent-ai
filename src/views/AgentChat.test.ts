@@ -2,14 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AgentChat from './AgentChat.vue'
 
-const streamAgentChatMock = vi.fn()
+const createAgentRunMock = vi.fn()
+const streamAgentRunMock = vi.fn()
 
 vi.mock('@/api/agent', () => ({
   deleteConversation: vi.fn(),
   listConversations: vi.fn().mockResolvedValue([]),
   listMessages: vi.fn().mockResolvedValue([]),
-  stopChat: vi.fn().mockResolvedValue(undefined),
-  streamAgentChat: (...args: unknown[]) => streamAgentChatMock(...args),
+  cancelAgentRun: vi.fn().mockResolvedValue(undefined),
+  createAgentRun: (...args: unknown[]) => createAgentRunMock(...args),
+  streamAgentRun: (...args: unknown[]) => streamAgentRunMock(...args),
 }))
 
 vi.mock('@/api/auth', () => ({
@@ -20,10 +22,12 @@ vi.mock('@/api/auth', () => ({
 
 beforeEach(() => {
   localStorage.setItem('agent-ui:auth', JSON.stringify({ token: 'token', userName: '测试用户' }))
+  createAgentRunMock.mockResolvedValue({ runId: 9, conversationId: 3, status: 'RUNNING' })
 })
 
 afterEach(() => {
-  streamAgentChatMock.mockReset()
+  createAgentRunMock.mockReset()
+  streamAgentRunMock.mockReset()
   localStorage.clear()
 })
 
@@ -35,7 +39,7 @@ describe('AgentChat', () => {
   })
 
   it('allows retrying a failed stream with the original query', async () => {
-    streamAgentChatMock
+    streamAgentRunMock
       .mockRejectedValueOnce(new Error('网络断开'))
       .mockResolvedValueOnce(undefined)
 
@@ -53,13 +57,13 @@ describe('AgentChat', () => {
     await retryButton!.trigger('click')
     await flushPromises()
 
-    expect(streamAgentChatMock).toHaveBeenCalledTimes(2)
-    expect(streamAgentChatMock.mock.calls[1][1]).toMatchObject({ query: '你好' })
+    expect(createAgentRunMock).toHaveBeenCalledTimes(2)
+    expect(createAgentRunMock.mock.calls[1][1]).toMatchObject({ query: '你好' })
   })
 
   it('shows thinking immediately while waiting for stream events', async () => {
     let resolveStream: (() => void) | undefined
-    streamAgentChatMock.mockImplementationOnce(() => new Promise<void>(resolve => {
+    streamAgentRunMock.mockImplementationOnce(() => new Promise<void>(resolve => {
       resolveStream = resolve
     }))
 
@@ -70,9 +74,9 @@ describe('AgentChat', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('处理中...')
-    expect(wrapper.text()).toContain('准备处理')
-    expect(wrapper.text()).toContain('等待服务响应...')
+    expect(wrapper.text()).toContain('思考中 · 正在理解需求')
+    expect(wrapper.text()).toContain('正在理解需求')
+    expect(wrapper.text()).toContain('准备选择下一步...')
 
     resolveStream?.()
     await flushPromises()
@@ -84,10 +88,10 @@ describe('AgentChat', () => {
       configurable: true,
       value: { writeText },
     })
-    streamAgentChatMock.mockImplementationOnce(async (...args: unknown[]) => {
-      const onEvent = args[2] as (event: { event: string, data: unknown }) => void
-      onEvent({ event: 'message', data: { content: '这是一段可复制回答' } })
-      onEvent({ event: 'done', data: {} })
+    streamAgentRunMock.mockImplementationOnce(async (...args: unknown[]) => {
+      const onEvent = args[2] as (event: unknown) => void
+      onEvent({ event: 'message.delta', runId: 9, sequence: 2, timestamp: 1, data: { content: '这是一段可复制回答' } })
+      onEvent({ event: 'run.completed', runId: 9, sequence: 3, timestamp: 2, data: {} })
     })
 
     const wrapper = mount(AgentChat)

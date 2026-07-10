@@ -3,6 +3,12 @@ export interface ArtifactItem {
   version?: string
   title: string
   payload: Record<string, unknown>
+  artifactId?: number
+  datasetId?: number
+  fileId?: number
+  mimeType?: string
+  previewUrl?: string
+  downloadUrl?: string
 }
 
 export interface NormalizedTablePayload {
@@ -39,23 +45,43 @@ export function normalizeTablePayload(payload: unknown): NormalizedTablePayload 
   return { columns, rows }
 }
 
-function normalizeArtifact(value: unknown): ArtifactItem | null {
+export function normalizeArtifact(value: unknown): ArtifactItem | null {
   const record = asRecord(value)
   if (!record || typeof record.type !== 'string') return null
 
   const payload = asRecord(record.payload) ?? {}
   const normalizedPayload = { ...payload }
 
-  if (record.type === 'chart' && !normalizedPayload.categories && Array.isArray(normalizedPayload.xAxis)) {
+  const type = record.type.toLowerCase()
+  if (type === 'chart' && !normalizedPayload.categories && Array.isArray(normalizedPayload.xAxis)) {
     normalizedPayload.categories = normalizedPayload.xAxis
     delete normalizedPayload.xAxis
   }
 
   return {
-    type: record.type,
+    type,
     version: typeof record.version === 'string' ? record.version : undefined,
     title: typeof record.title === 'string' ? record.title : '数据产物',
     payload: normalizedPayload,
+    artifactId: toNumber(record.artifactId),
+    datasetId: toNumber(record.datasetId),
+    fileId: toNumber(record.fileId),
+    mimeType: toString(record.mimeType),
+    previewUrl: safeArtifactUrl(record.previewUrl),
+    downloadUrl: safeArtifactUrl(record.downloadUrl),
+  }
+}
+
+/** 防御性限制可点击 Artifact URL，后端也执行相同白名单。 */
+export function safeArtifactUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const url = value.trim()
+  if (url.startsWith('/') && !url.startsWith('//')) return url
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? url : undefined
+  } catch {
+    return undefined
   }
 }
 
@@ -84,6 +110,14 @@ function toArray(value: unknown): unknown[] {
 
 function toStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String) : []
+}
+
+function toString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function toNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

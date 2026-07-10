@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getArtifactsFromStreamData, normalizeTablePayload } from './artifacts'
+import { getArtifactsFromStreamData, normalizeTablePayload, safeArtifactUrl } from './artifacts'
 
 describe('artifact helpers', () => {
   it('extracts artifacts from conversation payloads', () => {
@@ -48,5 +48,12 @@ describe('artifact helpers', () => {
         { 月份: '2月', 销售额: 180 },
       ],
     })
+  })
+
+  it('keeps safe file links and rejects executable schemes', () => {
+    expect(safeArtifactUrl('/agent/artifacts/9/download')).toBe('/agent/artifacts/9/download')
+    expect(safeArtifactUrl('https://office.example.com/preview/9')).toContain('https://')
+    expect(safeArtifactUrl('javascript:alert(1)')).toBeUndefined()
+    expect(safeArtifactUrl('data:text/html,bad')).toBeUndefined()
   })
 })

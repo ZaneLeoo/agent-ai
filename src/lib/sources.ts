@@ -34,7 +34,7 @@ export function formatSourceScore(score: unknown): string {
   return typeof score === 'number' ? `${Math.round(score * 100)}%` : ''
 }
 
-function normalizeSource(value: unknown): AgentSourceItem | null {
+export function normalizeSource(value: unknown): AgentSourceItem | null {
   const record = asRecord(value)
   if (!record) return null
 
