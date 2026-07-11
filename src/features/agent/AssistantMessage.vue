@@ -6,9 +6,18 @@
     <MessageContent
       :class="message.role === 'assistant' ? 'w-full max-w-full gap-3 overflow-visible' : 'min-w-0'"
     >
+      <Reasoning
+        v-if="message.role === 'assistant' && parsedContent.reasoning"
+        :is-streaming="message.streaming"
+        :default-open="message.streaming"
+        class="mb-3"
+      >
+        <ReasoningTrigger>{{ message.streaming ? '正在思考…' : '思考过程' }}</ReasoningTrigger>
+        <ReasoningContent :content="parsedContent.reasoning" />
+      </Reasoning>
       <MessageResponse
-        v-if="message.content"
-        :content="message.content"
+        v-if="parsedContent.answer"
+        :content="parsedContent.answer"
         class="h-auto min-h-0 w-full"
       />
       <div
@@ -57,12 +66,18 @@
 
 <script setup lang="ts">
 import { CheckIcon, CopyIcon } from '@lucide/vue'
+import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import {
   Message,
   MessageContent,
   MessageResponse,
 } from '@/components/ai-elements/message'
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from '@/components/ai-elements/reasoning'
 
 export interface AgentChatMessage {
   id: string
@@ -75,11 +90,25 @@ export interface AgentChatMessage {
   retryQuery: string
 }
 
-defineProps<{
+const props = defineProps<{
   message: AgentChatMessage
   copied: boolean
   retryDisabled: boolean
 }>()
+
+const parsedContent = computed(() => parseThinkingContent(props.message.content))
+
+function parseThinkingContent(content: string) {
+  const start = content.indexOf('<think>')
+  if (start < 0) return { reasoning: '', answer: content }
+  const reasoningStart = start + '<think>'.length
+  const end = content.indexOf('</think>', reasoningStart)
+  if (end < 0) return { reasoning: content.slice(reasoningStart).trim(), answer: content.slice(0, start).trim() }
+  return {
+    reasoning: content.slice(reasoningStart, end).trim(),
+    answer: `${content.slice(0, start)}${content.slice(end + '</think>'.length)}`.trim(),
+  }
+}
 
 const emit = defineEmits<{
   copy: [message: AgentChatMessage]
