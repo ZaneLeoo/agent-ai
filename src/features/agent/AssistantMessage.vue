@@ -31,14 +31,17 @@
                 class="rounded-md border px-3 py-2 bg-background/50 w-fit"
               >
                 <template #default>
-                  <TaskTrigger>
+                  <TaskTrigger title="工具调用">
                     <div class="flex items-center gap-2 text-muted-foreground text-sm">
                       <Search class="size-4" />
                       <p class="text-sm">
-                        {{ block.tool.phase === 'finished' ? '已完成' : '正在调用' }}：{{ block.tool.toolLabel || block.tool.toolName }}
+                        {{ block.tool.kind === 'knowledge' ? (block.tool.phase === 'finished' ? '知识库检索完成' : '正在查询知识库') : (block.tool.phase === 'finished' ? '已完成' : '正在调用') }}：{{ block.tool.toolLabel || block.tool.toolName }}
                       </p>
                     </div>
                   </TaskTrigger>
+                  <TaskContent v-if="block.tool.kind === 'knowledge' && block.tool.query">
+                    <TaskItem>查询：{{ block.tool.query }}</TaskItem>
+                  </TaskContent>
                 </template>
               </Task>
             </template>
@@ -138,8 +141,13 @@ function formatValue(value: unknown) {
 }
 
 // 1. 将文本按 think 标签切割为多段
-function parseContentToBlocks(content: string, isStreaming: boolean) {
-  const blocks: Array<{ type: 'reasoning' | 'answer'; content: string; streaming?: boolean }> = []
+type AnswerBlock = { type: 'answer'; content: string }
+type ReasoningBlock = { type: 'reasoning'; content: string; streaming?: boolean }
+type ToolBlock = { type: 'tool'; tool: AgentToolCall }
+type DisplayBlock = AnswerBlock | ReasoningBlock | ToolBlock
+
+function parseContentToBlocks(content: string, isStreaming: boolean): Array<AnswerBlock | ReasoningBlock> {
+  const blocks: Array<AnswerBlock | ReasoningBlock> = []
   let remaining = content
   const thinkStartRegex = /<think(?:\s[^>]*)?>/i
   const thinkEndRegex = /<\/think\s*>/i
@@ -179,17 +187,13 @@ function parseContentToBlocks(content: string, isStreaming: boolean) {
 }
 
 // 2. 结合 tools，以时序交织穿插构建 displayBlocks
-const displayBlocks = computed(() => {
+const displayBlocks = computed<DisplayBlock[]>(() => {
   if (props.message.role === 'user') {
     return [{ type: 'answer', content: props.message.content }]
   }
 
   const blocks = parseContentToBlocks(props.message.content, props.message.streaming)
-  const result: Array<
-    | { type: 'reasoning'; content: string; streaming?: boolean }
-    | { type: 'tool'; tool: AgentToolCall }
-    | { type: 'answer'; content: string }
-  > = []
+  const result: DisplayBlock[] = []
 
   let toolIndex = 0
 

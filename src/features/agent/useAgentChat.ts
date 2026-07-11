@@ -8,9 +8,11 @@ import type { AgentChatMessage } from './AssistantMessage.vue'
 type BootstrapStore = ReturnType<typeof createBootstrapStore>
 
 export interface AgentToolCall {
+  kind?: 'tool' | 'knowledge'
   callId: string
   toolName: string
   toolLabel: string
+  query?: string
   phase: 'started' | 'finished'
   position?: number
   input?: unknown
@@ -56,8 +58,13 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
         const message = messages.value[index]; if (!message) return
         if (event.event === 'message' && typeof event.data.content === 'string') message.content += event.data.content
         if (event.event === 'metadata' && typeof event.data.conversationId === 'string') difyConversationId = event.data.conversationId
-        if (event.event === 'tool' && typeof event.data.callId === 'string') {
-          const tool = event.data as unknown as AgentToolCall
+        if ((event.event === 'tool' || event.event === 'knowledge') && typeof event.data.callId === 'string') {
+          const tool = {
+            ...(event.data as unknown as AgentToolCall),
+            kind: event.event === 'knowledge' ? 'knowledge' : 'tool',
+            toolName: event.event === 'knowledge' ? String(event.data.datasetId ?? 'knowledge') : String(event.data.toolName ?? ''),
+            toolLabel: event.event === 'knowledge' ? String(event.data.datasetLabel ?? '知识库') : String(event.data.toolLabel ?? event.data.toolName ?? ''),
+          } as AgentToolCall
           const existing = message.tools.find(item => item.callId === tool.callId)
           if (existing) Object.assign(existing, tool)
           else message.tools.push({ ...tool, phase: tool.phase === 'finished' ? 'finished' : 'started' })
