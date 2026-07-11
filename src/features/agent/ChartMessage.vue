@@ -1,5 +1,5 @@
 <template>
-  <Card v-if="chart.phase === 'finished' && chart.option" class="my-4 w-full max-w-3xl overflow-hidden rounded-2xl border-primary/10 shadow-sm">
+  <Card v-if="chart.phase === 'finished' && chart.option" class="my-4 min-w-0 w-full max-w-3xl overflow-hidden rounded-2xl border-primary/10 shadow-sm">
     <CardHeader class="flex flex-row items-center justify-between space-y-0 border-b px-4 py-3">
       <div class="flex items-center gap-2">
         <div class="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary"><BarChart3Icon class="size-4" /></div>
@@ -15,7 +15,7 @@
 <script setup lang="ts">
 import { BarChart3Icon, DownloadIcon, LoaderCircleIcon } from '@lucide/vue'
 import * as echarts from 'echarts'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { AgentChart } from './useAgentChat'
@@ -27,6 +27,10 @@ const chartTypeLabel = computed(() => ({ bar: '柱状图', line: '折线图', pi
 
 function renderChart() {
   if (!chartElement.value || !props.chart.option) return
+  if (chartElement.value.clientWidth === 0) {
+    requestAnimationFrame(renderChart)
+    return
+  }
   instance?.dispose()
   instance = echarts.init(chartElement.value)
   instance.setOption(props.chart.option as echarts.EChartsOption, { notMerge: true })
@@ -40,6 +44,7 @@ function downloadChart() {
   link.click()
 }
 onMounted(() => { window.addEventListener('resize', resizeChart); void nextTick(renderChart) })
-watch(() => props.chart.option, () => void nextTick(renderChart), { deep: true })
+onUpdated(() => void nextTick(renderChart))
+watch(() => [props.chart.phase, props.chart.option], () => void nextTick(renderChart), { deep: true, flush: 'post' })
 onBeforeUnmount(() => { window.removeEventListener('resize', resizeChart); instance?.dispose() })
 </script>
