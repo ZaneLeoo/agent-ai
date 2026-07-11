@@ -8,14 +8,22 @@ import type { AgentChatMessage } from './AssistantMessage.vue'
 type BootstrapStore = ReturnType<typeof createBootstrapStore>
 
 export interface AgentToolCall {
-  kind?: 'tool' | 'knowledge'
   callId: string
   toolName: string
   toolLabel: string
-  query?: string
   phase: 'started' | 'finished'
   position?: number
   input?: unknown
+  output?: unknown
+}
+
+export interface AgentKnowledgeCall {
+  callId: string
+  datasetId: string
+  datasetLabel: string
+  phase: 'started' | 'finished'
+  position?: number
+  query?: string
   output?: unknown
 }
 
@@ -30,7 +38,7 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
 
   function baseMessage(role: 'user' | 'assistant', content: string): AgentChatMessage {
     return { id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}`, role, content,
-      streaming: false, stopped: false, failed: false, error: '', retryQuery: '', tools: [] }
+      streaming: false, stopped: false, failed: false, error: '', retryQuery: '', tools: [], knowledges: [] }
   }
   function createUserMessage(content: string) { return baseMessage('user', content) }
   function createAssistantMessage(content = '', retryQuery = '') { return { ...baseMessage('assistant', content), retryQuery } }
@@ -58,16 +66,17 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
         const message = messages.value[index]; if (!message) return
         if (event.event === 'message' && typeof event.data.content === 'string') message.content += event.data.content
         if (event.event === 'metadata' && typeof event.data.conversationId === 'string') difyConversationId = event.data.conversationId
-        if ((event.event === 'tool' || event.event === 'knowledge') && typeof event.data.callId === 'string') {
-          const tool = {
-            ...(event.data as unknown as AgentToolCall),
-            kind: event.event === 'knowledge' ? 'knowledge' : 'tool',
-            toolName: event.event === 'knowledge' ? String(event.data.datasetId ?? 'knowledge') : String(event.data.toolName ?? ''),
-            toolLabel: event.event === 'knowledge' ? String(event.data.datasetLabel ?? '知识库') : String(event.data.toolLabel ?? event.data.toolName ?? ''),
-          } as AgentToolCall
+        if (event.event === 'tool' && typeof event.data.callId === 'string') {
+          const tool = event.data as unknown as AgentToolCall
           const existing = message.tools.find(item => item.callId === tool.callId)
           if (existing) Object.assign(existing, tool)
           else message.tools.push({ ...tool, phase: tool.phase === 'finished' ? 'finished' : 'started' })
+        }
+        if (event.event === 'knowledge' && typeof event.data.callId === 'string') {
+          const kb = event.data as unknown as AgentKnowledgeCall
+          const existing = message.knowledges.find(item => item.callId === kb.callId)
+          if (existing) Object.assign(existing, kb)
+          else message.knowledges.push({ ...kb, phase: kb.phase === 'finished' ? 'finished' : 'started' })
         }
         if (event.event === 'error') { message.failed = true; message.error = String(event.data.message ?? '请求失败') }
       }, abortController.value.signal)
@@ -96,7 +105,7 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
   function clearMessages() { messages.value = []; difyConversationId = undefined }
   function loadConversation(historyMessages: AgentChatMessage[], conversationId?: string) {
     stopStream()
-    messages.value = historyMessages.map(message => ({ ...message, streaming: false, tools: message.tools ?? [] }))
+    messages.value = historyMessages.map(message => ({ ...message, streaming: false, tools: message.tools ?? [], knowledges: message.knowledges ?? [] }))
     difyConversationId = conversationId
   }
   function getConversationId() { return difyConversationId }

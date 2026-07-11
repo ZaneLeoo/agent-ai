@@ -35,13 +35,10 @@
                     <div class="flex items-center gap-2 text-muted-foreground text-sm">
                       <Search class="size-4" />
                       <p class="text-sm">
-                        {{ block.tool.kind === 'knowledge' ? (block.tool.phase === 'finished' ? '知识库检索完成' : '正在查询知识库') : (block.tool.phase === 'finished' ? '已完成' : '正在调用') }}：{{ block.tool.toolLabel || block.tool.toolName }}
+                        {{ block.tool.phase === 'finished' ? '已完成' : '正在调用' }}：{{ block.tool.toolLabel || block.tool.toolName }}
                       </p>
                     </div>
                   </TaskTrigger>
-                  <TaskContent v-if="block.tool.kind === 'knowledge' && block.tool.query">
-                    <TaskItem>查询：{{ block.tool.query }}</TaskItem>
-                  </TaskContent>
                 </template>
               </Task>
             </template>
@@ -55,6 +52,34 @@
         :content="answerText"
         class="h-auto min-h-0 w-full"
       />
+
+      <!-- 知识库来源引用 -->
+      <Sources
+        v-if="message.knowledges && message.knowledges.length"
+        class="mt-3"
+      >
+        <SourcesTrigger :count="message.knowledges.length">
+          <div class="flex items-center gap-1.5 text-xs font-medium text-primary/85 hover:text-primary cursor-pointer transition-colors">
+            <span>参考了 {{ message.knowledges.length }} 个知识库来源</span>
+            <ChevronDown class="size-3.5 text-primary/60 transition-transform group-data-[state=open]:rotate-180" />
+          </div>
+        </SourcesTrigger>
+        <SourcesContent>
+          <Source
+            v-for="kb in message.knowledges"
+            :key="kb.callId"
+            href="#"
+            :title="kb.datasetLabel || kb.datasetId"
+            class="text-[13px] text-muted-foreground my-1 block pointer-events-none cursor-default"
+          >
+            <div class="flex items-center gap-2">
+              <BookIcon class="size-3.5 text-primary/80" />
+              <span>知识库：{{ kb.datasetLabel || kb.datasetId }}</span>
+              <span v-if="kb.query" class="text-xs text-muted-foreground/60">（查询：{{ kb.query }}）</span>
+            </div>
+          </Source>
+        </SourcesContent>
+      </Sources>
 
       <div
         v-if="message.role === 'assistant' && message.content"
@@ -101,7 +126,7 @@
 </template>
 
 <script setup lang="ts">
-import { CheckIcon, CopyIcon, Search } from '@lucide/vue'
+import { CheckIcon, CopyIcon, Search, BookIcon, ChevronDown } from '@lucide/vue'
 import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Markdown } from 'vue-stream-markdown'
@@ -116,7 +141,13 @@ import {
   ReasoningTrigger,
 } from '@/components/ai-elements/reasoning'
 import { Task, TaskContent, TaskItem, TaskTrigger } from '@/components/ai-elements/task'
-import type { AgentToolCall } from './useAgentChat'
+import {
+  Sources,
+  SourcesTrigger,
+  SourcesContent,
+  Source,
+} from '@/components/ai-elements/sources'
+import type { AgentToolCall, AgentKnowledgeCall } from './useAgentChat'
 
 export interface AgentChatMessage {
   id: string
@@ -128,6 +159,7 @@ export interface AgentChatMessage {
   error: string
   retryQuery: string
   tools: AgentToolCall[]
+  knowledges: AgentKnowledgeCall[]
 }
 
 const props = defineProps<{
