@@ -1,13 +1,14 @@
 import type { ChatStatus } from 'ai'
 import { ref } from 'vue'
 import { streamChat } from '@/api/agent'
+import { ApiError } from '@/api/http'
 import type { createBootstrapStore } from '@/lib/bootstrap'
 import type { AgentChatMessage } from './AssistantMessage.vue'
 
 type BootstrapStore = ReturnType<typeof createBootstrapStore>
 
 /** 基础聊天状态：只处理用户消息、Dify 文本流与停止。 */
-export function useAgentChat(bootstrap: BootstrapStore) {
+export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired?: () => void } = {}) {
   const messages = ref<AgentChatMessage[]>([])
   const status = ref<ChatStatus>('ready')
   const abortController = ref<AbortController | null>(null)
@@ -49,6 +50,7 @@ export function useAgentChat(bootstrap: BootstrapStore) {
       }, abortController.value.signal)
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) options.onAuthExpired?.()
         assistant.failed = true; assistant.error = error instanceof Error ? error.message : '请求失败'
       }
     } finally {
@@ -67,8 +69,14 @@ export function useAgentChat(bootstrap: BootstrapStore) {
     copiedResetTimer = setTimeout(() => { copiedMessageId.value = '' }, 1600)
   }
   function clearMessages() { messages.value = []; difyConversationId = undefined }
+  function loadConversation(historyMessages: AgentChatMessage[], conversationId?: string) {
+    stopStream()
+    messages.value = historyMessages.map(message => ({ ...message, streaming: false }))
+    difyConversationId = conversationId
+  }
+  function getConversationId() { return difyConversationId }
   function cleanupChat() { stopStream(); if (copiedResetTimer) clearTimeout(copiedResetTimer) }
 
   return { messages, status, copiedMessageId, handleSuggestionClick, handleSubmit, retryMessage,
-    copyMessageContent, stopStream, clearMessages, cleanupChat }
+    copyMessageContent, stopStream, clearMessages, loadConversation, getConversationId, cleanupChat }
 }
