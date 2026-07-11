@@ -7,7 +7,7 @@
       :class="message.role === 'assistant' ? 'w-full max-w-full gap-3 overflow-visible' : 'min-w-0'"
     >
       <Reasoning
-        v-if="message.role === 'assistant' && parsedContent.reasoning"
+        v-if="message.role === 'assistant' && parsedContent.hasThinking"
         :is-streaming="message.streaming"
         :default-open="message.streaming"
         class="mb-3"
@@ -99,14 +99,19 @@ const props = defineProps<{
 const parsedContent = computed(() => parseThinkingContent(props.message.content))
 
 function parseThinkingContent(content: string) {
-  const start = content.indexOf('<think>')
-  if (start < 0) return { reasoning: '', answer: content }
-  const reasoningStart = start + '<think>'.length
-  const end = content.indexOf('</think>', reasoningStart)
-  if (end < 0) return { reasoning: content.slice(reasoningStart).trim(), answer: content.slice(0, start).trim() }
+  const startMatch = /<think(?:\s[^>]*)?>/i.exec(content)
+  if (!startMatch || startMatch.index === undefined) return { hasThinking: false, reasoning: '', answer: content }
+  const start = startMatch.index
+  const reasoningStart = start + startMatch[0].length
+  const endMatch = /<\/think\s*>/i.exec(content.slice(reasoningStart))
+  if (!endMatch || endMatch.index === undefined) {
+    return { hasThinking: true, reasoning: content.slice(reasoningStart).trim(), answer: content.slice(0, start).trim() }
+  }
+  const end = reasoningStart + endMatch.index
   return {
+    hasThinking: true,
     reasoning: content.slice(reasoningStart, end).trim(),
-    answer: `${content.slice(0, start)}${content.slice(end + '</think>'.length)}`.trim(),
+    answer: `${content.slice(0, start)}${content.slice(end + endMatch[0].length)}`.trim(),
   }
 }
 
