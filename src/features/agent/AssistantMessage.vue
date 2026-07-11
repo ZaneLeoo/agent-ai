@@ -98,22 +98,29 @@
         </SourcesContent>
       </Sources>
 
-      <div
-        v-if="message.role === 'assistant' && message.content"
-        class="mt-2 flex justify-end"
+      <!-- 弱化的悬浮操作栏 (Hover 时渐显，且在流式输出结束、有内容时呈现) -->
+      <MessageToolbar
+        v-if="message.role === 'assistant' && message.content && !message.streaming"
+        class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 mt-2"
       >
-        <Button
-          class="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-          size="sm"
-          variant="ghost"
-          type="button"
-          @click="emit('copy', message)"
-        >
-          <CheckIcon v-if="copied" class="size-3.5" />
-          <CopyIcon v-else class="size-3.5" />
-          {{ copied ? '已复制' : '复制' }}
-        </Button>
-      </div>
+        <MessageActions>
+          <MessageAction
+            :tooltip="copied ? '已复制' : '复制内容'"
+            @click="emit('copy', message)"
+          >
+            <CheckIcon v-if="copied" class="size-4 text-emerald-500" />
+            <CopyIcon v-else class="size-4 text-muted-foreground/80" />
+          </MessageAction>
+          <MessageAction
+            v-slot="actionProps"
+            v-if="message.retryQuery && !retryDisabled"
+            tooltip="重新生成"
+            @click="emit('retry', message)"
+          >
+            <RotateCw class="size-4 text-muted-foreground/80" v-bind="actionProps" />
+          </MessageAction>
+        </MessageActions>
+      </MessageToolbar>
       <div
         v-if="message.stopped"
         class="mt-2 flex items-center gap-1.5 text-xs text-destructive"
@@ -143,7 +150,7 @@
 </template>
 
 <script setup lang="ts">
-import { CheckIcon, CopyIcon, Search, BookIcon, ChevronDown } from '@lucide/vue'
+import { CheckIcon, CopyIcon, Search, BookIcon, ChevronDown, RotateCw, SparklesIcon } from '@lucide/vue'
 import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Markdown } from 'vue-stream-markdown'
@@ -151,6 +158,9 @@ import {
   Message,
   MessageContent,
   MessageResponse,
+  MessageToolbar,
+  MessageActions,
+  MessageAction,
 } from '@/components/ai-elements/message'
 import {
   Reasoning,

@@ -11,49 +11,72 @@
     @submit="handleLogin"
   />
 
-  <div v-else class="flex size-full h-screen bg-background">
-    <aside class="hidden w-64 shrink-0 flex-col border-r bg-muted/20 p-3 md:flex">
-      <div class="mb-3 flex items-center justify-between px-2">
-        <span class="font-semibold">智能助手</span>
-        <Button class="size-8" variant="ghost" size="icon" title="新建对话" @click="startNewConversation">
-          <PlusIcon class="size-4" />
-        </Button>
+  <div v-else class="agent-shell flex size-full h-screen overflow-hidden bg-background">
+    <aside class="agent-sidebar hidden w-[276px] shrink-0 flex-col border-r md:flex">
+      <div class="flex items-center gap-3 px-5 pb-5 pt-6">
+        <div class="agent-logo flex size-10 items-center justify-center rounded-xl bg-primary text-white shadow-sm">
+          <SparklesIcon class="size-5" />
+        </div>
+        <div>
+          <div class="text-[17px] font-bold tracking-tight">智能助手</div>
+          <div class="text-[11px] text-muted-foreground">企业 AI 工作台</div>
+        </div>
       </div>
-      <Button class="mb-3 w-full justify-start gap-2" variant="outline" @click="startNewConversation">
-        <PlusIcon class="size-4" /> 新建对话
-      </Button>
-      <div class="min-h-0 flex-1 space-y-1 overflow-y-auto">
-        <Button
-          v-for="item in history"
-          :key="item.id"
-          class="h-auto w-full justify-start truncate px-3 py-2 text-left text-sm font-normal"
-          :class="item.id === activeHistoryId ? 'bg-accent font-medium' : 'text-muted-foreground'"
-          variant="ghost"
-          type="button"
-          @click="openHistory(item)"
-        >
-          {{ item.title }}
+      <div class="px-4">
+        <Button class="agent-new-chat mb-4 h-11 w-full justify-center gap-2 rounded-xl border-0 text-white shadow-sm" @click="startNewConversation">
+          <PlusIcon class="size-4" /> 新建对话
         </Button>
+        <div class="agent-search mb-4 flex h-10 items-center gap-2 rounded-xl border bg-muted/40 px-3 text-sm text-muted-foreground focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20">
+          <SearchIcon class="size-4 shrink-0 opacity-70" />
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="搜索对话"
+            class="h-full flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/60 outline-none"
+          />
+          <SlidersHorizontalIcon class="ml-auto size-3.5 opacity-60" />
+        </div>
+      </div>
+      <div class="min-h-0 flex-1 overflow-y-auto px-3">
+        <div v-for="group in historyGroups" :key="group.label" class="mb-5">
+          <div class="px-2 pb-2 text-xs font-medium text-muted-foreground">{{ group.label }}</div>
+          <button
+            v-for="item in group.items"
+            :key="item.id"
+            class="agent-history-item group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors"
+            :class="item.id === activeHistoryId ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-muted-foreground hover:text-foreground'"
+            type="button"
+            @click="openHistory(item)"
+          >
+            <MessageSquareIcon class="size-4 shrink-0 opacity-80" />
+            <span class="min-w-0 flex-1 truncate">{{ item.title }}</span>
+            <span class="text-[11px] text-muted-foreground/70 group-hover:text-primary/70">{{ formatHistoryTime(item.updatedAt) }}</span>
+          </button>
+        </div>
         <p v-if="history.length === 0" class="px-3 py-4 text-xs text-muted-foreground">暂无历史对话</p>
       </div>
-      <div class="mt-3 border-t pt-3">
-        <div class="flex items-center gap-2 px-2 py-2">
-          <div class="flex size-8 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
-            {{ userInitial }}
+      <div class="border-t p-4">
+        <div class="flex items-center gap-3 rounded-xl px-2 py-2">
+          <div class="agent-avatar flex size-9 items-center justify-center rounded-full bg-primary/15 text-primary text-sm font-bold shadow-sm">{{ userInitial }}</div>
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-sm font-medium">{{ bootstrap.state.userName }}</div>
+            <div class="text-[11px] text-muted-foreground">在线使用中</div>
           </div>
-          <div class="min-w-0 flex-1 truncate text-sm">{{ bootstrap.state.userName }}</div>
-          <Button variant="ghost" size="sm" class="px-2" @click="handleLogout">退出</Button>
+          <Button variant="ghost" size="icon" class="size-8 text-muted-foreground hover:text-foreground" title="系统设置">
+            <SettingsIcon class="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon" class="size-8 text-muted-foreground hover:text-foreground" title="退出登录" @click="handleLogout">
+            <LogOutIcon class="size-4" />
+          </Button>
         </div>
       </div>
     </aside>
-    <main class="relative mx-auto flex min-w-0 flex-1 flex-col p-4 md:p-6">
-      <div class="mb-3 flex items-center justify-between">
-        <div class="text-sm font-medium text-muted-foreground">{{ activeTitle || '新对话' }}</div>
-        <Button class="gap-2" variant="ghost" size="sm" @click="startNewConversation">
-          <PlusIcon class="size-4" />
-          新建对话
-        </Button>
-      </div>
+    <main class="relative mx-auto flex min-w-0 flex-1 flex-col">
+      <header class="agent-header flex h-[68px] shrink-0 items-center justify-between border-b px-5 md:px-8">
+        <div class="min-w-0"><h1 class="truncate text-base font-semibold">{{ activeTitle || '新对话' }}</h1><div class="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground"><span class="size-1.5 rounded-full bg-emerald-500" />Agent 已就绪</div></div>
+        <div class="flex items-center gap-1"><Button variant="ghost" size="icon" class="size-9 text-muted-foreground" title="收藏"><BookmarkIcon class="size-4" /></Button><Button variant="ghost" size="icon" class="size-9 text-muted-foreground" title="分享"><Share2Icon class="size-4" /></Button><Button variant="ghost" size="icon" class="size-9 text-muted-foreground" title="新建对话" @click="startNewConversation"><PlusIcon class="size-4" /></Button></div>
+      </header>
+      <div class="flex min-h-0 flex-1 flex-col px-4 md:px-8 pb-4 md:pb-6">
       <Conversation class="h-full">
       <ConversationContent>
         <!-- 空状态 -->
@@ -81,17 +104,18 @@
 
     <!-- 输入区域 -->
     <ChatComposer :status="status" @submit="handleSubmit" />
+    </div>
 
     <!-- Token 提示 -->
     <div v-if="!bootstrap.state.token" class="mt-2 text-center text-xs text-muted-foreground">
       ⚠ 未配置 token，请设置 VITE_AGENT_TOKEN 环境变量
-    </div>
+      </div>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { PlusIcon } from '@lucide/vue'
+import { BookmarkIcon, ChevronRightIcon, LogOutIcon, MessageSquareIcon, PlusIcon, SearchIcon, Share2Icon, SlidersHorizontalIcon, SparklesIcon, SettingsIcon } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
@@ -152,9 +176,25 @@ interface ConversationHistory {
 
 const history = ref<ConversationHistory[]>([])
 const activeHistoryId = ref('')
+const searchQuery = ref('')
 const historyStorageKey = computed(() => `agent-ui:history:${bootstrap.state.userName || 'anonymous'}`)
 const activeTitle = computed(() => history.value.find(item => item.id === activeHistoryId.value)?.title || '')
 const userInitial = computed(() => (bootstrap.state.userName || '用').slice(0, 1).toUpperCase())
+const historyGroups = computed(() => {
+  const now = Date.now()
+  const query = searchQuery.value.trim().toLowerCase()
+  const filtered = history.value.filter(item => !query || item.title.toLowerCase().includes(query))
+  const groups = [{ label: '今天', items: [] as ConversationHistory[] }, { label: '更早', items: [] as ConversationHistory[] }]
+  filtered.forEach(item => (now - item.updatedAt < 86400000 ? groups[0].items : groups[1].items).push(item))
+  return groups.filter(group => group.items.length)
+})
+
+function formatHistoryTime(timestamp: number) {
+  const date = new Date(timestamp)
+  return date.toLocaleDateString() === new Date().toLocaleDateString()
+    ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : `${date.getMonth() + 1}/${date.getDate()}`
+}
 
 function loadHistory() {
   try { history.value = JSON.parse(localStorage.getItem(historyStorageKey.value) || '[]') } catch { history.value = [] }

@@ -38,16 +38,16 @@ const thinkingMessage = computed(() => {
 
       <template v-if="thinkingMessage === 'thinking'">
         <Shimmer :duration="1">
-          Thinking...
+          正在思考...
         </Shimmer>
       </template>
 
       <template v-else-if="thinkingMessage === 'default_done'">
-        <p>Thought for a few seconds</p>
+        <p>思考了几秒</p>
       </template>
 
       <template v-else>
-        <p>Thought for {{ duration }} seconds</p>
+        <p>思考了 {{ duration }} 秒</p>
       </template>
 
       <ChevronDownIcon
