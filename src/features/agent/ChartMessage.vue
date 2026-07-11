@@ -1,15 +1,45 @@
 <template>
-  <Card v-if="chart.phase === 'finished' && chart.option" class="my-4 min-w-0 w-full max-w-3xl overflow-hidden rounded-2xl border-primary/10 shadow-sm">
+  <Card class="my-4 min-w-0 w-full max-w-3xl overflow-hidden rounded-2xl border-primary/10 shadow-sm bg-card">
     <CardHeader class="flex flex-row items-center justify-between space-y-0 border-b px-4 py-3">
       <div class="flex items-center gap-2">
-        <div class="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary"><BarChart3Icon class="size-4" /></div>
-        <div><CardTitle class="text-sm">{{ chart.title || chartTypeLabel }}</CardTitle><p class="text-[11px] text-muted-foreground">{{ chartTypeLabel }}</p></div>
+        <div class="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <BarChart3Icon class="size-4" />
+        </div>
+        <div>
+          <CardTitle class="text-sm font-semibold">{{ chart.title || chartTypeLabel }}</CardTitle>
+          <p class="text-[11px] text-muted-foreground">{{ chartTypeLabel }}</p>
+        </div>
       </div>
-      <Button variant="ghost" size="icon" class="size-8 text-muted-foreground" title="下载图片" @click="downloadChart"><DownloadIcon class="size-4" /></Button>
+      <Button
+        v-if="chart.phase === 'finished' && chart.option"
+        variant="ghost"
+        size="icon"
+        class="size-8 text-muted-foreground hover:text-foreground"
+        title="下载图片"
+        @click="downloadChart"
+      >
+        <DownloadIcon class="size-4" />
+      </Button>
     </CardHeader>
-    <CardContent class="p-3"><div ref="chartElement" class="h-[320px] w-full" /></CardContent>
+    <CardContent class="p-3 relative">
+      <!-- 图表容器：一直保持在 DOM 中，防止 ref 为 undefined，在生成后用 v-show 渐显 -->
+      <div
+        ref="chartElement"
+        v-show="chart.phase === 'finished' && chart.option"
+        class="w-full"
+        style="height: 320px; min-height: 320px;"
+      />
+      
+      <!-- 加载提示占位：在未完成时展示 -->
+      <div
+        v-if="chart.phase !== 'finished' || !chart.option"
+        class="flex h-[320px] w-full items-center justify-center gap-2 text-sm text-muted-foreground"
+      >
+        <LoaderCircleIcon class="size-4 animate-spin text-primary" />
+        <span>正在为您绘制{{ chartTypeLabel }}…</span>
+      </div>
+    </CardContent>
   </Card>
-  <div v-else class="my-3 flex items-center gap-2 rounded-xl border bg-muted/20 px-4 py-3 text-sm text-muted-foreground"><LoaderCircleIcon class="size-4 animate-spin text-primary" />正在生成{{ chartTypeLabel }}…</div>
 </template>
 
 <script setup lang="ts">
@@ -27,13 +57,29 @@ const chartTypeLabel = computed(() => ({ bar: '柱状图', line: '折线图', pi
 
 function renderChart() {
   if (!chartElement.value || !props.chart.option) return
-  if (chartElement.value.clientWidth === 0) {
-    requestAnimationFrame(renderChart)
+
+  if (chartElement.value.clientWidth === 0 || chartElement.value.clientHeight === 0) {
+    console.warn('[ChartMessage] chart container has no size; skip rendering')
     return
   }
-  instance?.dispose()
-  instance = echarts.init(chartElement.value)
-  instance.setOption(props.chart.option as echarts.EChartsOption, { notMerge: true })
+
+  try {
+    instance?.dispose()
+    instance = echarts.init(chartElement.value)
+
+    let opt = props.chart.option
+    if (typeof opt === 'string') {
+      try {
+        opt = JSON.parse(opt)
+      } catch (e) {
+        console.error('[ChartMessage] option parse from string failed', e)
+      }
+    }
+
+    instance.setOption(opt as echarts.EChartsOption, { notMerge: true })
+  } catch (err) {
+    console.error('[ChartMessage] ECharts init or setOption failed:', err)
+  }
 }
 function resizeChart() { instance?.resize() }
 function downloadChart() {
