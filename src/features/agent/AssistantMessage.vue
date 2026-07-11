@@ -6,35 +6,53 @@
     <MessageContent
       :class="message.role === 'assistant' ? 'w-full max-w-full gap-3 overflow-visible' : 'min-w-0'"
     >
+      <!-- 统一的执行过程折叠块 -->
       <Reasoning
-        v-if="message.role === 'assistant' && parsedContent.hasThinking"
+        v-if="reasoningChain.length"
         :is-streaming="message.streaming"
         class="mb-3"
       >
         <ReasoningTrigger />
-        <ReasoningContent :content="parsedContent.reasoning" />
+        <ReasoningContent>
+          <div class="mt-3 space-y-3">
+            <template v-for="(block, idx) in reasoningChain" :key="idx">
+              <!-- 思考段落：带引用线与小字号排版 -->
+              <div
+                v-if="block.type === 'reasoning'"
+                class="pl-4 border-l-2 border-muted-foreground/25 text-muted-foreground/80 text-[13px] leading-relaxed"
+              >
+                <Markdown :content="block.content" />
+              </div>
+
+              <!-- 工具调用段落：原装 Task 卡片样式（宽度自适应、无折叠箭头） -->
+              <Task
+                v-else-if="block.type === 'tool'"
+                :default-open="false"
+                class="rounded-md border px-3 py-2 bg-background/50 w-fit"
+              >
+                <template #default>
+                  <TaskTrigger>
+                    <div class="flex items-center gap-2 text-muted-foreground text-sm">
+                      <Search class="size-4" />
+                      <p class="text-sm">
+                        {{ block.tool.phase === 'finished' ? '已完成' : '正在调用' }}：{{ block.tool.toolLabel || block.tool.toolName }}
+                      </p>
+                    </div>
+                  </TaskTrigger>
+                </template>
+              </Task>
+            </template>
+          </div>
+        </ReasoningContent>
       </Reasoning>
-      <div v-if="message.role === 'assistant' && message.tools.length" class="mb-3 space-y-2">
-        <Task
-          v-for="tool in message.tools"
-          :key="tool.callId"
-          :default-open="false"
-          class="rounded-md border px-3 py-2"
-        >
-          <template #default>
-            <TaskTrigger :title="`${tool.phase === 'finished' ? '已完成' : '正在调用'}：${tool.toolLabel || tool.toolName}`" />
-            <TaskContent>
-              <TaskItem v-if="tool.input">输入：{{ formatValue(tool.input) }}</TaskItem>
-              <TaskItem v-if="tool.output">输出：{{ formatValue(tool.output) }}</TaskItem>
-            </TaskContent>
-          </template>
-        </Task>
-      </div>
+
+      <!-- 最终回复正文 -->
       <MessageResponse
-        v-if="parsedContent.answer"
-        :content="parsedContent.answer"
+        v-if="answerText"
+        :content="answerText"
         class="h-auto min-h-0 w-full"
       />
+
       <div
         v-if="message.role === 'assistant' && message.content"
         class="mt-2 flex justify-end"
@@ -80,9 +98,10 @@
 </template>
 
 <script setup lang="ts">
-import { CheckIcon, CopyIcon } from '@lucide/vue'
+import { CheckIcon, CopyIcon, Search } from '@lucide/vue'
 import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
+import { Markdown } from 'vue-stream-markdown'
 import {
   Message,
   MessageContent,
@@ -114,28 +133,107 @@ const props = defineProps<{
   retryDisabled: boolean
 }>()
 
-const parsedContent = computed(() => parseThinkingContent(props.message.content))
-
 function formatValue(value: unknown) {
   return typeof value === 'string' ? value : JSON.stringify(value)
 }
 
-function parseThinkingContent(content: string) {
-  const startMatch = /<think(?:\s[^>]*)?>/i.exec(content)
-  if (!startMatch || startMatch.index === undefined) return { hasThinking: false, reasoning: '', answer: content }
-  const start = startMatch.index
-  const reasoningStart = start + startMatch[0].length
-  const endMatch = /<\/think\s*>/i.exec(content.slice(reasoningStart))
-  if (!endMatch || endMatch.index === undefined) {
-    return { hasThinking: true, reasoning: content.slice(reasoningStart).trim(), answer: content.slice(0, start).trim() }
+// 1. 将文本按 think 标签切割为多段
+function parseContentToBlocks(content: string, isStreaming: boolean) {
+  const blocks: Array<{ type: 'reasoning' | 'answer'; content: string; streaming?: boolean }> = []
+  let remaining = content
+  const thinkStartRegex = /<think(?:\s[^>]*)?>/i
+  const thinkEndRegex = /<\/think\s*>/i
+
+  while (remaining.length > 0) {
+    const startMatch = thinkStartRegex.exec(remaining)
+    if (!startMatch || startMatch.index === undefined) {
+      blocks.push({ type: 'answer', content: remaining })
+      break
+    }
+
+    if (startMatch.index > 0) {
+      blocks.push({ type: 'answer', content: remaining.slice(0, startMatch.index) })
+    }
+
+    const reasoningStart = startMatch.index + startMatch[0].length
+    const rest = remaining.slice(reasoningStart)
+    const endMatch = thinkEndRegex.exec(rest)
+
+    if (!endMatch || endMatch.index === undefined) {
+      blocks.push({
+        type: 'reasoning',
+        content: rest,
+        streaming: isStreaming,
+      })
+      remaining = ''
+    } else {
+      blocks.push({
+        type: 'reasoning',
+        content: rest.slice(0, endMatch.index),
+        streaming: false,
+      })
+      remaining = rest.slice(endMatch.index + endMatch[0].length)
+    }
   }
-  const end = reasoningStart + endMatch.index
-  return {
-    hasThinking: true,
-    reasoning: content.slice(reasoningStart, end).trim(),
-    answer: `${content.slice(0, start)}${content.slice(end + endMatch[0].length)}`.trim(),
-  }
+  return blocks
 }
+
+// 2. 结合 tools，以时序交织穿插构建 displayBlocks
+const displayBlocks = computed(() => {
+  if (props.message.role === 'user') {
+    return [{ type: 'answer', content: props.message.content }]
+  }
+
+  const blocks = parseContentToBlocks(props.message.content, props.message.streaming)
+  const result: Array<
+    | { type: 'reasoning'; content: string; streaming?: boolean }
+    | { type: 'tool'; tool: AgentToolCall }
+    | { type: 'answer'; content: string }
+  > = []
+
+  let toolIndex = 0
+
+  for (const block of blocks) {
+    if (block.type === 'reasoning') {
+      result.push(block)
+      // 在流式过程中，某段思考一旦结束（闭合标签匹配成功），就立即在这个段落后面插入当时对应的工具调用
+      if (!block.streaming) {
+        if (toolIndex < props.message.tools.length) {
+          result.push({ type: 'tool', tool: props.message.tools[toolIndex] })
+          toolIndex++
+        }
+      }
+    } else {
+      // 避免时序错位：在渲染正文前把中间积压 of 工具调用先全部渲染
+      while (toolIndex < props.message.tools.length) {
+        result.push({ type: 'tool', tool: props.message.tools[toolIndex] })
+        toolIndex++
+      }
+      result.push(block)
+    }
+  }
+
+  // 兜底：流渲染完如果还有剩余的工具对象，则追加在末尾
+  while (toolIndex < props.message.tools.length) {
+    result.push({ type: 'tool', tool: props.message.tools[toolIndex] })
+    toolIndex++
+  }
+
+  return result
+})
+
+// 收集思考和工具组成的链条
+const reasoningChain = computed(() => {
+  return displayBlocks.value.filter(block => block.type === 'reasoning' || block.type === 'tool')
+})
+
+// 合并拼接出最终的回复正文
+const answerText = computed(() => {
+  return displayBlocks.value
+    .filter(block => block.type === 'answer')
+    .map(block => block.content)
+    .join('')
+})
 
 const emit = defineEmits<{
   copy: [message: AgentChatMessage]
