@@ -23,16 +23,17 @@
         <PlusIcon class="size-4" /> 新建对话
       </Button>
       <div class="min-h-0 flex-1 space-y-1 overflow-y-auto">
-        <button
+        <Button
           v-for="item in history"
           :key="item.id"
-          class="w-full truncate rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+          class="h-auto w-full justify-start truncate px-3 py-2 text-left text-sm font-normal"
           :class="item.id === activeHistoryId ? 'bg-accent font-medium' : 'text-muted-foreground'"
+          variant="ghost"
           type="button"
           @click="openHistory(item)"
         >
           {{ item.title }}
-        </button>
+        </Button>
         <p v-if="history.length === 0" class="px-3 py-4 text-xs text-muted-foreground">暂无历史对话</p>
       </div>
       <div class="mt-3 border-t pt-3">
