@@ -1,5 +1,5 @@
 <template>
-  <Card class="my-4 min-w-0 w-full max-w-2xl overflow-hidden rounded-2xl border-primary/10 bg-card shadow-sm">
+  <Card class="mx-auto my-4 min-w-0 w-full max-w-xl overflow-hidden rounded-2xl border-primary/10 bg-card shadow-sm">
     <CardHeader class="flex flex-row items-center justify-between space-y-0 border-b px-4 py-3">
       <div class="flex items-center gap-2">
         <div class="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -55,7 +55,7 @@ const props = defineProps<{ chart: AgentChart }>()
 const chartElement = ref<HTMLElement>()
 let instance: echarts.ECharts | undefined
 const chartTypeLabel = computed(() => ({ bar: '柱状图', line: '折线图', pie: '饼图' })[props.chart.chartType] || '图表')
-const chartHeight = computed(() => props.chart.chartType === 'pie' ? 300 : 260)
+const chartHeight = computed(() => 320)
 
 function renderChart() {
   if (!chartElement.value || !props.chart.option) return
