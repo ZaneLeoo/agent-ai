@@ -14,6 +14,22 @@
         <ReasoningTrigger />
         <ReasoningContent :content="parsedContent.reasoning" />
       </Reasoning>
+      <div v-if="message.role === 'assistant' && message.tools.length" class="mb-3 space-y-2">
+        <Task
+          v-for="tool in message.tools"
+          :key="tool.callId"
+          :default-open="false"
+          class="rounded-md border px-3 py-2"
+        >
+          <template #default>
+            <TaskTrigger :title="`${tool.phase === 'finished' ? '已完成' : '正在调用'}：${tool.toolLabel || tool.toolName}`" />
+            <TaskContent>
+              <TaskItem v-if="tool.input">输入：{{ formatValue(tool.input) }}</TaskItem>
+              <TaskItem v-if="tool.output">输出：{{ formatValue(tool.output) }}</TaskItem>
+            </TaskContent>
+          </template>
+        </Task>
+      </div>
       <MessageResponse
         v-if="parsedContent.answer"
         :content="parsedContent.answer"
@@ -77,6 +93,8 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from '@/components/ai-elements/reasoning'
+import { Task, TaskContent, TaskItem, TaskTrigger } from '@/components/ai-elements/task'
+import type { AgentToolCall } from './useAgentChat'
 
 export interface AgentChatMessage {
   id: string
@@ -87,6 +105,7 @@ export interface AgentChatMessage {
   failed: boolean
   error: string
   retryQuery: string
+  tools: AgentToolCall[]
 }
 
 const props = defineProps<{
@@ -96,6 +115,10 @@ const props = defineProps<{
 }>()
 
 const parsedContent = computed(() => parseThinkingContent(props.message.content))
+
+function formatValue(value: unknown) {
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
 
 function parseThinkingContent(content: string) {
   const startMatch = /<think(?:\s[^>]*)?>/i.exec(content)

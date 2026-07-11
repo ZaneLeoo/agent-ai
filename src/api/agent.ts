@@ -1,7 +1,7 @@
 import type { BootstrapState } from '@/lib/bootstrap'
 import { ApiError, withBaseApi } from './http'
 
-export interface ChatStreamEvent { event: 'message' | 'metadata' | 'done' | 'error'; data: Record<string, unknown> }
+export interface ChatStreamEvent { event: 'message' | 'metadata' | 'tool' | 'done' | 'error'; data: Record<string, unknown> }
 
 export async function streamChat(bootstrap: BootstrapState, query: string, difyConversationId: string | undefined,
   onEvent: (event: ChatStreamEvent) => void, signal?: AbortSignal) {
@@ -29,6 +29,6 @@ export function parseChatSseFrame(frame: string): ChatStreamEvent | null {
   const text = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n')
   if (!event) return null
   let data: unknown = {}; try { data = text ? JSON.parse(text) : {} } catch { data = {} }
-  if (!['message', 'metadata', 'done', 'error'].includes(event) || !data || typeof data !== 'object' || Array.isArray(data)) return null
+  if (!['message', 'metadata', 'tool', 'done', 'error'].includes(event) || !data || typeof data !== 'object' || Array.isArray(data)) return null
   return { event: event as ChatStreamEvent['event'], data: data as Record<string, unknown> }
 }
