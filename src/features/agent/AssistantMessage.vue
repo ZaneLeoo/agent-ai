@@ -51,12 +51,6 @@
           重试
         </Button>
       </div>
-      <SourcesPanel :sources="message.sources" />
-      <AgentArtifact
-        v-for="(artifact, aIdx) in message.artifacts"
-        :key="`${message.id}-artifact-${aIdx}`"
-        :artifact="artifact"
-      />
     </MessageContent>
   </Message>
 </template>
@@ -69,25 +63,16 @@ import {
   MessageContent,
   MessageResponse,
 } from '@/components/ai-elements/message'
-import AgentArtifact from '@/features/agent/AgentArtifact.vue'
-import SourcesPanel from '@/features/agent/SourcesPanel.vue'
-import type { ArtifactItem } from '@/lib/artifacts'
-import type { AgentSourceItem } from '@/lib/sources'
-import type { ThinkingStep } from '@/lib/steps'
 
 export interface AgentChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
   streaming: boolean
-  steps: ThinkingStep[]
-  thinkingOpen: boolean
   stopped: boolean
   failed: boolean
   error: string
   retryQuery: string
-  artifacts: ArtifactItem[]
-  sources: AgentSourceItem[]
 }
 
 defineProps<{

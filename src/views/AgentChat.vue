@@ -12,29 +12,12 @@
   />
 
   <div v-else class="flex size-full h-screen bg-background">
-    <ConversationSidebar
-      v-model:mobile-open="mobileSidebarOpen"
-      :active-conversation-id="activeConversationId"
-      :conversation-error="conversationError"
-      :conversations="conversations"
-      :loading-conversations="loadingConversations"
-      :user-initial="userInitial"
-      :user-name="bootstrap.state.userName"
-      @delete="removeConversation"
-      @logout="handleLogout"
-      @new="startNewConversation"
-      @select="selectConversation"
-    />
-
     <main class="relative mx-auto flex min-w-0 flex-1 flex-col p-4 md:p-6">
-      <div class="mb-3 flex items-center justify-between md:hidden">
-        <Button class="gap-2" variant="outline" size="sm" @click="mobileSidebarOpen = true">
-          <PanelLeftIcon class="size-4" />
-          会话
-        </Button>
+      <div class="mb-3 flex items-center justify-between">
+        <div class="text-sm font-medium text-muted-foreground">{{ bootstrap.state.userName || '智能助手' }}</div>
         <Button class="gap-2" variant="ghost" size="sm" @click="startNewConversation">
           <PlusIcon class="size-4" />
-          新建
+          新建对话
         </Button>
       </div>
       <Conversation class="h-full">
@@ -48,14 +31,6 @@
 
         <!-- 消息列表 -->
         <template v-for="message in messages" :key="message.id">
-          <ThinkingSteps
-            v-if="message.role === 'assistant' && message.steps.length"
-            v-model:open="message.thinkingOpen"
-            :failed="message.failed"
-            :steps="message.steps"
-            :stopped="message.stopped"
-          />
-
           <AssistantMessage
             :copied="copiedMessageId === message.id"
             :message="message"
@@ -82,19 +57,16 @@
 </template>
 
 <script setup lang="ts">
-import { PanelLeftIcon, PlusIcon } from '@lucide/vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { PlusIcon } from '@lucide/vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
 import AssistantMessage from '@/features/agent/AssistantMessage.vue'
 import ChatComposer from '@/features/agent/ChatComposer.vue'
 import ChatWelcome from '@/features/agent/ChatWelcome.vue'
-import ConversationSidebar from '@/features/agent/ConversationSidebar.vue'
 import LoginPanel from '@/features/agent/LoginPanel.vue'
-import ThinkingSteps from '@/features/agent/ThinkingSteps.vue'
 import { useAgentAuth } from '@/features/agent/useAgentAuth'
 import { useAgentChat } from '@/features/agent/useAgentChat'
-import { useConversations } from '@/features/agent/useConversations'
 import {
   Conversation,
   ConversationContent,
@@ -103,7 +75,6 @@ import {
 import { Loader } from '@/components/ai-elements/loader'
 
 const bootstrap = createBootstrapStore()
-const activeConversationId = ref<number | undefined>()
 const {
   messages,
   status,
@@ -113,30 +84,9 @@ const {
   retryMessage,
   copyMessageContent,
   stopStream,
-  toChatMessage,
   clearMessages,
   cleanupChat,
-} = useAgentChat(bootstrap, {
-  activeConversationId,
-  onConversationListChanged: () => loadConversationList(),
-})
-const {
-  conversations,
-  loadingConversations,
-  conversationError,
-  mobileSidebarOpen,
-  loadConversationList,
-  selectConversation,
-  startNewConversation,
-  removeConversation,
-  clearConversationState,
-} = useConversations(bootstrap, {
-  activeConversationId,
-  status,
-  messages,
-  toChatMessage,
-  clearMessages,
-})
+} = useAgentChat(bootstrap)
 const {
   loggingIn,
   loginError,
@@ -147,7 +97,7 @@ const {
   handleLogin,
   refreshCaptcha,
   clearAuth,
-} = useAgentAuth(bootstrap, { onLoginSuccess: loadConversationList })
+} = useAgentAuth(bootstrap)
 
 const tips = [
   '帮我总结一下本月经营情况',
@@ -155,22 +105,23 @@ const tips = [
   '根据知识库，销售人员跟进客户时需要注意什么？',
 ]
 
-const userInitial = computed(() => bootstrap.state.userName.slice(0, 1).toUpperCase() || '用')
+function startNewConversation() {
+  stopStream()
+  clearMessages()
+}
 
 function handleLogout() {
   stopStream()
   clearAuth()
   clearMessages()
-  clearConversationState()
 }
 
 onMounted(() => {
   bootstrap.start()
-  loadConversationList()
   if (!bootstrap.state.token) refreshCaptcha()
 })
 watch(() => bootstrap.state.ready, (ready) => {
-  if (ready) loadConversationList()
+  if (ready && !bootstrap.state.token) refreshCaptcha()
 })
 watch(() => bootstrap.state.token, (token) => {
   if (!token) refreshCaptcha()
