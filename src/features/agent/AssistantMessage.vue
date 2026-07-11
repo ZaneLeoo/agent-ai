@@ -9,10 +9,9 @@
       <Reasoning
         v-if="message.role === 'assistant' && parsedContent.hasThinking"
         :is-streaming="message.streaming"
-        :default-open="message.streaming"
         class="mb-3"
       >
-        <ReasoningTrigger>{{ message.streaming ? '正在思考…' : '思考过程' }}</ReasoningTrigger>
+        <ReasoningTrigger />
         <ReasoningContent :content="parsedContent.reasoning" />
       </Reasoning>
       <MessageResponse

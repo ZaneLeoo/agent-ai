@@ -16,10 +16,10 @@ const props = defineProps<Props>()
 const { isStreaming, isOpen, duration } = useReasoningContext()
 
 const thinkingMessage = computed(() => {
-  if (isStreaming.value || duration.value === 0) {
+  if (isStreaming.value) {
     return 'thinking'
   }
-  if (duration.value === undefined) {
+  if (duration.value === undefined || duration.value === 0) {
     return 'default_done'
   }
   return 'duration_done'

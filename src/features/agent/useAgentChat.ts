@@ -54,7 +54,9 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
         assistant.failed = true; assistant.error = error instanceof Error ? error.message : '请求失败'
       }
     } finally {
-      assistant.streaming = false; status.value = 'ready'; abortController.value = null
+      const message = messages.value[index]
+      if (message) message.streaming = false
+      status.value = 'ready'; abortController.value = null
     }
   }
   function stopStream() {
