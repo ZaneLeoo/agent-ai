@@ -53,6 +53,12 @@
         class="h-auto min-h-0 w-full"
       />
 
+      <ChartMessage
+        v-for="chart in message.charts"
+        :key="chart.callId"
+        :chart="chart"
+      />
+
       <!-- 知识库来源引用 -->
       <Sources
         v-if="message.knowledges && message.knowledges.length"
@@ -174,7 +180,8 @@ import {
   SourcesContent,
   Source,
 } from '@/components/ai-elements/sources'
-import type { AgentToolCall, AgentKnowledgeCall } from './useAgentChat'
+import type { AgentToolCall, AgentKnowledgeCall, AgentChart } from './useAgentChat'
+import ChartMessage from './ChartMessage.vue'
 
 export interface AgentChatMessage {
   id: string
@@ -187,6 +194,7 @@ export interface AgentChatMessage {
   retryQuery: string
   tools: AgentToolCall[]
   knowledges: AgentKnowledgeCall[]
+  charts: AgentChart[]
 }
 
 const props = defineProps<{

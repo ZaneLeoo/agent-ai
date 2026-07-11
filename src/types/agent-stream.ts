@@ -1,5 +1,5 @@
 /** 前后端约定的 Agent SSE 事件名称。 */
-export const AGENT_STREAM_EVENT_TYPES = ['message', 'metadata', 'tool', 'knowledge', 'done', 'error'] as const
+export const AGENT_STREAM_EVENT_TYPES = ['message', 'metadata', 'tool', 'knowledge', 'chart', 'done', 'error'] as const
 
 export type AgentStreamEventType = typeof AGENT_STREAM_EVENT_TYPES[number]
 

@@ -37,6 +37,15 @@ export interface AgentKnowledgeSource {
   score?: number
 }
 
+export interface AgentChart {
+  callId: string
+  toolName: string
+  chartType: 'bar' | 'line' | 'pie'
+  phase: 'started' | 'finished'
+  title?: string
+  option?: Record<string, unknown>
+}
+
 /** 基础聊天状态：只处理用户消息、Dify 文本流与停止。 */
 export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired?: () => void } = {}) {
   const messages = ref<AgentChatMessage[]>([])
@@ -48,7 +57,7 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
 
   function baseMessage(role: 'user' | 'assistant', content: string): AgentChatMessage {
     return { id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}`, role, content,
-      streaming: false, stopped: false, failed: false, error: '', retryQuery: '', tools: [], knowledges: [] }
+      streaming: false, stopped: false, failed: false, error: '', retryQuery: '', tools: [], knowledges: [], charts: [] }
   }
   function createUserMessage(content: string) { return baseMessage('user', content) }
   function createAssistantMessage(content = '', retryQuery = '') { return { ...baseMessage('assistant', content), retryQuery } }
@@ -88,6 +97,12 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
           if (existing) Object.assign(existing, kb)
           else message.knowledges.push({ ...kb, phase: kb.phase === 'finished' ? 'finished' : 'started' })
         }
+        if (event.event === 'chart' && typeof event.data.callId === 'string') {
+          const chart = event.data as unknown as AgentChart
+          const existing = message.charts.find(item => item.callId === chart.callId)
+          if (existing) Object.assign(existing, chart)
+          else message.charts.push({ ...chart, phase: chart.phase === 'finished' ? 'finished' : 'started' })
+        }
         if (event.event === 'error') { message.failed = true; message.error = String(event.data.message ?? '请求失败') }
       }, abortController.value.signal)
     } catch (error) {
@@ -115,7 +130,7 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
   function clearMessages() { messages.value = []; difyConversationId = undefined }
   function loadConversation(historyMessages: AgentChatMessage[], conversationId?: string) {
     stopStream()
-    messages.value = historyMessages.map(message => ({ ...message, streaming: false, tools: message.tools ?? [], knowledges: message.knowledges ?? [] }))
+    messages.value = historyMessages.map(message => ({ ...message, streaming: false, tools: message.tools ?? [], knowledges: message.knowledges ?? [], charts: message.charts ?? [] }))
     difyConversationId = conversationId
   }
   function getConversationId() { return difyConversationId }
