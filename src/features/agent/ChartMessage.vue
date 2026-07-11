@@ -46,7 +46,7 @@
 <script setup lang="ts">
 import { BarChart3Icon, DownloadIcon, LoaderCircleIcon } from '@lucide/vue'
 import * as echarts from 'echarts'
-import { computed, nextTick, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { AgentChart } from './useAgentChat'
@@ -92,7 +92,6 @@ function downloadChart() {
   link.click()
 }
 onMounted(() => { window.addEventListener('resize', resizeChart); void nextTick(renderChart) })
-onUpdated(() => void nextTick(renderChart))
 watch(() => [props.chart.phase, props.chart.option], () => void nextTick(renderChart), { deep: true, flush: 'post' })
 onBeforeUnmount(() => { window.removeEventListener('resize', resizeChart); instance?.dispose() })
 </script>
