@@ -25,6 +25,16 @@ export interface AgentKnowledgeCall {
   position?: number
   query?: string
   output?: unknown
+  sources?: AgentKnowledgeSource[]
+}
+
+export interface AgentKnowledgeSource {
+  sourceId: string
+  segmentId?: string
+  documentId?: string
+  documentName: string
+  content: string
+  score?: number
 }
 
 /** 基础聊天状态：只处理用户消息、Dify 文本流与停止。 */

@@ -58,26 +58,43 @@
         v-if="message.knowledges && message.knowledges.length"
         class="mt-3"
       >
-        <SourcesTrigger :count="message.knowledges.length">
+        <SourcesTrigger :count="sourceCount">
           <div class="flex items-center gap-1.5 text-xs font-medium text-primary/85 hover:text-primary cursor-pointer transition-colors">
-            <span>参考了 {{ message.knowledges.length }} 个知识库来源</span>
+            <span>参考了 {{ sourceCount }} 个知识库片段</span>
             <ChevronDown class="size-3.5 text-primary/60 transition-transform group-data-[state=open]:rotate-180" />
           </div>
         </SourcesTrigger>
         <SourcesContent>
-          <Source
-            v-for="kb in message.knowledges"
-            :key="kb.callId"
-            href="#"
-            :title="kb.datasetLabel || kb.datasetId"
-            class="text-[13px] text-muted-foreground my-1 block pointer-events-none cursor-default"
-          >
-            <div class="flex items-center gap-2">
-              <BookIcon class="size-3.5 text-primary/80" />
-              <span>知识库：{{ kb.datasetLabel || kb.datasetId }}</span>
-              <span v-if="kb.query" class="text-xs text-muted-foreground/60">（查询：{{ kb.query }}）</span>
-            </div>
-          </Source>
+          <template v-for="kb in message.knowledges" :key="kb.callId">
+            <Source
+              v-for="source in kb.sources"
+              :key="source.sourceId"
+              href="#"
+              :title="source.documentName"
+              class="my-1 block pointer-events-none cursor-default rounded-md border px-3 py-2 text-[13px] text-muted-foreground"
+            >
+              <div class="flex items-start gap-2">
+                <BookIcon class="mt-0.5 size-3.5 shrink-0 text-primary/80" />
+                <div class="min-w-0">
+                  <div class="font-medium text-foreground">{{ source.documentName }}</div>
+                  <p class="mt-1 line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed">{{ source.content }}</p>
+                  <span v-if="source.score !== undefined" class="mt-1 block text-[11px] text-muted-foreground/60">匹配度：{{ source.score.toFixed(3) }}</span>
+                </div>
+              </div>
+            </Source>
+            <Source
+              v-if="!kb.sources?.length"
+              :key="`${kb.callId}-fallback`"
+              href="#"
+              :title="kb.datasetLabel || kb.datasetId"
+              class="my-1 block pointer-events-none cursor-default text-[13px] text-muted-foreground"
+            >
+              <div class="flex items-center gap-2">
+                <BookIcon class="size-3.5 text-primary/80" />
+                <span>知识库：{{ kb.datasetLabel || kb.datasetId }}</span>
+              </div>
+            </Source>
+          </template>
         </SourcesContent>
       </Sources>
 
@@ -167,6 +184,8 @@ const props = defineProps<{
   copied: boolean
   retryDisabled: boolean
 }>()
+
+const sourceCount = computed(() => props.message.knowledges.reduce((count, item) => count + (item.sources?.length || 1), 0))
 
 function formatValue(value: unknown) {
   return typeof value === 'string' ? value : JSON.stringify(value)
