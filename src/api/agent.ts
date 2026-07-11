@@ -1,7 +1,8 @@
 import type { BootstrapState } from '@/lib/bootstrap'
 import { ApiError, withBaseApi } from './http'
+import { AGENT_STREAM_EVENT_TYPES, type AgentStreamEvent } from '@/types/agent-stream'
 
-export interface ChatStreamEvent { event: 'message' | 'metadata' | 'tool' | 'knowledge' | 'done' | 'error'; data: Record<string, unknown> }
+export type ChatStreamEvent = AgentStreamEvent
 
 export async function streamChat(bootstrap: BootstrapState, query: string, difyConversationId: string | undefined,
   onEvent: (event: ChatStreamEvent) => void, signal?: AbortSignal) {
@@ -29,6 +30,6 @@ export function parseChatSseFrame(frame: string): ChatStreamEvent | null {
   const text = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n')
   if (!event) return null
   let data: unknown = {}; try { data = text ? JSON.parse(text) : {} } catch { data = {} }
-  if (!['message', 'metadata', 'tool', 'knowledge', 'done', 'error'].includes(event) || !data || typeof data !== 'object' || Array.isArray(data)) return null
+  if (!AGENT_STREAM_EVENT_TYPES.includes(event as typeof AGENT_STREAM_EVENT_TYPES[number]) || !data || typeof data !== 'object' || Array.isArray(data)) return null
   return { event: event as ChatStreamEvent['event'], data: data as Record<string, unknown> }
 }
