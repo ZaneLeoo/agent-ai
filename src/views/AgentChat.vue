@@ -94,6 +94,7 @@
             :retry-disabled="status !== 'ready'"
             @copy="copyMessageContent"
             @retry="retryMessage"
+            @confirm-purchase-order="openPurchaseOrderConfirmation"
           />
         </template>
 
@@ -105,6 +106,14 @@
     <!-- 输入区域 -->
     <ChatComposer :status="status" @submit="handleSubmit" />
     </div>
+
+    <PurchaseOrderConfirmDialog
+      v-if="selectedPurchaseOrderDraft"
+      v-model:open="purchaseOrderDialogOpen"
+      :item="selectedPurchaseOrderDraft"
+      :bootstrap="bootstrap.state"
+      @created="handlePurchaseOrderCreated"
+    />
 
     <!-- Token 提示 -->
     <div v-if="!bootstrap.state.token" class="mt-2 text-center text-xs text-muted-foreground">
@@ -121,6 +130,8 @@ import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
 import AssistantMessage from '@/features/agent/AssistantMessage.vue'
 import type { AgentChatMessage } from '@/features/agent/AssistantMessage.vue'
+import PurchaseOrderConfirmDialog from '@/features/agent/PurchaseOrderConfirmDialog.vue'
+import type { AgentPurchaseOrderDraft, CreatePurchaseOrderDraftResult } from '@/types/automation'
 import ChatComposer from '@/features/agent/ChatComposer.vue'
 import ChatWelcome from '@/features/agent/ChatWelcome.vue'
 import LoginPanel from '@/features/agent/LoginPanel.vue'
@@ -177,6 +188,8 @@ interface ConversationHistory {
 const history = ref<ConversationHistory[]>([])
 const activeHistoryId = ref('')
 const searchQuery = ref('')
+const purchaseOrderDialogOpen = ref(false)
+const selectedPurchaseOrderDraft = ref<AgentPurchaseOrderDraft | null>(null)
 const historyStorageKey = computed(() => `agent-ui:history:${bootstrap.state.userName || 'anonymous'}`)
 const activeTitle = computed(() => history.value.find(item => item.id === activeHistoryId.value)?.title || '')
 const userInitial = computed(() => (bootstrap.state.userName || '用').slice(0, 1).toUpperCase())
@@ -235,6 +248,15 @@ function handleLogout() {
   stopStream()
   clearAuth()
   clearMessages()
+}
+
+function openPurchaseOrderConfirmation(item: AgentPurchaseOrderDraft) {
+  selectedPurchaseOrderDraft.value = item
+  purchaseOrderDialogOpen.value = true
+}
+
+function handlePurchaseOrderCreated(item: AgentPurchaseOrderDraft, result: CreatePurchaseOrderDraftResult) {
+  item.createdOrderCode = result.orderCode
 }
 
 onMounted(() => {

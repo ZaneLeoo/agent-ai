@@ -59,6 +59,13 @@
         :chart="chart"
       />
 
+      <PurchaseOrderDraftCard
+        v-for="draft in message.purchaseOrderDrafts"
+        :key="draft.callId"
+        :item="draft"
+        @confirm="emit('confirmPurchaseOrder', $event)"
+      />
+
       <!-- 知识库来源引用 -->
       <Sources
         v-if="message.knowledges && message.knowledges.length"
@@ -182,6 +189,8 @@ import {
 } from '@/components/ai-elements/sources'
 import type { AgentToolCall, AgentKnowledgeCall, AgentChart } from './useAgentChat'
 import ChartMessage from './ChartMessage.vue'
+import PurchaseOrderDraftCard from './PurchaseOrderDraftCard.vue'
+import type { AgentPurchaseOrderDraft } from '@/types/automation'
 
 export interface AgentChatMessage {
   id: string
@@ -195,6 +204,7 @@ export interface AgentChatMessage {
   tools: AgentToolCall[]
   knowledges: AgentKnowledgeCall[]
   charts: AgentChart[]
+  purchaseOrderDrafts: AgentPurchaseOrderDraft[]
 }
 
 const props = defineProps<{
@@ -311,5 +321,6 @@ const answerText = computed(() => {
 const emit = defineEmits<{
   copy: [message: AgentChatMessage]
   retry: [message: AgentChatMessage]
+  confirmPurchaseOrder: [item: AgentPurchaseOrderDraft]
 }>()
 </script>

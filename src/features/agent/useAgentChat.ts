@@ -4,6 +4,7 @@ import { streamChat } from '@/api/agent'
 import { ApiError } from '@/api/http'
 import type { createBootstrapStore } from '@/lib/bootstrap'
 import type { AgentChatMessage } from './AssistantMessage.vue'
+import type { AgentPurchaseOrderDraft, PurchaseOrderPreparation } from '@/types/automation'
 
 type BootstrapStore = ReturnType<typeof createBootstrapStore>
 
@@ -57,7 +58,7 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
 
   function baseMessage(role: 'user' | 'assistant', content: string): AgentChatMessage {
     return { id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}`, role, content,
-      streaming: false, stopped: false, failed: false, error: '', retryQuery: '', tools: [], knowledges: [], charts: [] }
+      streaming: false, stopped: false, failed: false, error: '', retryQuery: '', tools: [], knowledges: [], charts: [], purchaseOrderDrafts: [] }
   }
   function createUserMessage(content: string) { return baseMessage('user', content) }
   function createAssistantMessage(content = '', retryQuery = '') { return { ...baseMessage('assistant', content), retryQuery } }
@@ -90,6 +91,10 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
           const existing = message.tools.find(item => item.callId === tool.callId)
           if (existing) Object.assign(existing, tool)
           else message.tools.push({ ...tool, phase: tool.phase === 'finished' ? 'finished' : 'started' })
+          const preparation = extractPurchaseOrderPreparation(tool)
+          if (preparation && !message.purchaseOrderDrafts.some(item => item.callId === tool.callId)) {
+            message.purchaseOrderDrafts.push({ ...preparation, callId: tool.callId, requestId: createRequestId() })
+          }
         }
         if (event.event === 'knowledge' && typeof event.data.callId === 'string') {
           const kb = event.data as unknown as AgentKnowledgeCall
@@ -130,7 +135,7 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
   function clearMessages() { messages.value = []; difyConversationId = undefined }
   function loadConversation(historyMessages: AgentChatMessage[], conversationId?: string) {
     stopStream()
-    messages.value = historyMessages.map(message => ({ ...message, streaming: false, tools: message.tools ?? [], knowledges: message.knowledges ?? [], charts: message.charts ?? [] }))
+    messages.value = historyMessages.map(message => ({ ...message, streaming: false, tools: message.tools ?? [], knowledges: message.knowledges ?? [], charts: message.charts ?? [], purchaseOrderDrafts: message.purchaseOrderDrafts ?? [] }))
     difyConversationId = conversationId
   }
   function getConversationId() { return difyConversationId }
@@ -138,4 +143,24 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
 
   return { messages, status, copiedMessageId, handleSuggestionClick, handleSubmit, retryMessage,
     copyMessageContent, stopStream, clearMessages, loadConversation, getConversationId, cleanupChat }
+}
+
+function extractPurchaseOrderPreparation(tool: AgentToolCall): PurchaseOrderPreparation | null {
+  if (tool.phase !== 'finished') return null
+  const output = parseOutput(tool.output)
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return null
+  const data = 'data' in output && output.data && typeof output.data === 'object' ? output.data : output
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null
+  const value = data as Record<string, unknown>
+  if (value.status !== 'READY' || !value.draft || typeof value.draft !== 'object') return null
+  return value as unknown as PurchaseOrderPreparation
+}
+
+function parseOutput(output: unknown): unknown {
+  if (typeof output !== 'string') return output
+  try { return JSON.parse(output) } catch { return null }
+}
+
+function createRequestId() {
+  return globalThis.crypto?.randomUUID?.() ?? `agent-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
