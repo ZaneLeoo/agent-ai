@@ -1,6 +1,6 @@
 <template>
   <Dialog :open="open" @update:open="emit('update:open', $event)">
-    <DialogContent class="max-h-[88vh] max-w-3xl overflow-y-auto p-0" :show-close-button="!creating">
+    <DialogContent class="max-h-[88vh] w-[min(900px,calc(100%-2rem))] !max-w-4xl overflow-y-auto p-0" :show-close-button="!creating">
       <DialogHeader class="px-5 pt-5">
         <DialogTitle>确认创建采购订单</DialogTitle>
         <DialogDescription>系统会再次校验供应商、物料和金额，并以当前登录用户创建“草稿”状态订单。</DialogDescription>
