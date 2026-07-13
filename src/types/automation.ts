@@ -1,5 +1,3 @@
-export type AutomationPreparationStatus = 'NEED_INPUT' | 'AMBIGUOUS' | 'INVALID' | 'READY'
-
 export interface PurchaseOrderDraftLine {
   lineNo: number
   materialId: number
@@ -27,19 +25,7 @@ export interface PurchaseOrderDraft {
   lines: PurchaseOrderDraftLine[]
 }
 
-export interface PurchaseOrderPreparation {
-  status: AutomationPreparationStatus
-  message: string
-  missingFields?: string[]
-  candidates?: Array<{
-    field: string
-    keyword: string
-    options: Array<{ id: number; code: string; name: string; spec?: string; model?: string; unit?: string }>
-  }>
-  draft?: PurchaseOrderDraft | null
-}
-
-export interface AgentPurchaseOrderDraft extends PurchaseOrderPreparation {
+export interface AgentPurchaseOrderDraft extends PurchaseOrderDraft {
   callId: string
   requestId: string
   createdOrderCode?: string

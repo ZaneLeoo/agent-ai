@@ -50,7 +50,7 @@ import type { AgentPurchaseOrderDraft } from '@/types/automation'
 
 const props = defineProps<{ item: AgentPurchaseOrderDraft }>()
 const emit = defineEmits<{ confirm: [item: AgentPurchaseOrderDraft] }>()
-const draft = props.item.draft!
+const draft = props.item
 
 function formatNumber(value: number) { return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(value) }
 function formatCurrency(value: number) { return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: draft.currency || 'CNY' }).format(value) }

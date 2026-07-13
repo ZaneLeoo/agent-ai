@@ -4,7 +4,7 @@ import { streamChat } from '@/api/agent'
 import { ApiError, isAuthExpiredPayload } from '@/api/http'
 import type { createBootstrapStore } from '@/lib/bootstrap'
 import type { AgentChatMessage } from './AssistantMessage.vue'
-import type { AgentPurchaseOrderDraft, PurchaseOrderPreparation } from '@/types/automation'
+import type { AgentPurchaseOrderDraft, PurchaseOrderDraft } from '@/types/automation'
 
 type BootstrapStore = ReturnType<typeof createBootstrapStore>
 
@@ -117,9 +117,9 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
           const existing = message.tools.find(item => item.callId === tool.callId)
           if (existing) Object.assign(existing, tool)
           else message.tools.push({ ...tool, phase: tool.phase === 'finished' ? 'finished' : 'started' })
-          const preparation = extractPurchaseOrderPreparation(tool)
-          if (preparation && !message.purchaseOrderDrafts.some(item => item.callId === tool.callId)) {
-            message.purchaseOrderDrafts.push({ ...preparation, callId: tool.callId, requestId: createRequestId() })
+          const draft = extractPurchaseOrderDraft(tool)
+          if (draft && !message.purchaseOrderDrafts.some(item => item.callId === tool.callId)) {
+            message.purchaseOrderDrafts.push({ ...draft, callId: tool.callId, requestId: createRequestId() })
           }
         }
         if (event.event === 'knowledge' && typeof event.data.callId === 'string') {
@@ -188,15 +188,17 @@ function upsertFile(message: AgentChatMessage, file: AgentFile) {
   else message.files.push(normalized)
 }
 
-function extractPurchaseOrderPreparation(tool: AgentToolCall): PurchaseOrderPreparation | null {
+function extractPurchaseOrderDraft(tool: AgentToolCall): PurchaseOrderDraft | null {
   if (tool.phase !== 'finished') return null
   const output = parseOutput(tool.output)
   if (!output || typeof output !== 'object' || Array.isArray(output)) return null
-  const data = 'data' in output && output.data && typeof output.data === 'object' ? output.data : output
+  const envelope = output as Record<string, unknown>
+  if (envelope.status !== 'SUCCESS' || envelope.nextAction !== 'CONFIRM_ACTION') return null
+  const data = envelope.data
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null
   const value = data as Record<string, unknown>
-  if (value.status !== 'READY' || !value.draft || typeof value.draft !== 'object') return null
-  return value as unknown as PurchaseOrderPreparation
+  if (!value.supplierCode || !Array.isArray(value.lines)) return null
+  return value as unknown as PurchaseOrderDraft
 }
 
 function parseOutput(output: unknown): unknown {

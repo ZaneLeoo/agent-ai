@@ -115,7 +115,7 @@ const props = defineProps<{ open: boolean; item: AgentPurchaseOrderDraft; bootst
 const emit = defineEmits<{ 'update:open': [open: boolean]; created: [item: AgentPurchaseOrderDraft, result: CreatePurchaseOrderDraftResult] }>()
 const creating = ref(false)
 const errorMessage = ref('')
-const draft = computed(() => props.item.draft!)
+const draft = computed(() => props.item)
 
 // 含税订单总金额自动累加计算
 const totalAmount = computed(() => {
