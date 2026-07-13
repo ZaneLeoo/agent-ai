@@ -159,6 +159,7 @@
 import { AlertTriangleIcon, BookmarkIcon, ChevronRightIcon, LogOutIcon, MessageSquareIcon, PlusIcon, SearchIcon, Share2Icon, SlidersHorizontalIcon, SparklesIcon, SettingsIcon, Trash2Icon } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
+import { AUTH_EXPIRED_EVENT } from '@/api/http'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import AssistantMessage from '@/features/agent/AssistantMessage.vue'
@@ -290,7 +291,7 @@ function confirmDeleteHistory() {
 }
 function handleAuthExpired() {
   stopStream()
-  clearAuth()
+  clearAuth('登录状态已过期，请重新登录')
   clearMessages()
   activeHistoryId.value = ''
 }
@@ -317,6 +318,7 @@ function handlePurchaseOrderCreated(item: AgentPurchaseOrderDraft, result: Creat
 }
 
 onMounted(() => {
+  window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
   bootstrap.start()
   loadHistory()
   if (!bootstrap.state.token) refreshCaptcha()
@@ -335,5 +337,9 @@ watch(messages, () => {
   persistHistory()
 }, { deep: true })
 watch(historyStorageKey, () => loadHistory())
-onBeforeUnmount(() => { cleanupChat(); bootstrap.stop() })
+onBeforeUnmount(() => {
+  window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
+  cleanupChat()
+  bootstrap.stop()
+})
 </script>

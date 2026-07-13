@@ -1,7 +1,7 @@
 import type { ChatStatus } from 'ai'
 import { ref } from 'vue'
 import { streamChat } from '@/api/agent'
-import { ApiError } from '@/api/http'
+import { ApiError, isAuthExpiredPayload } from '@/api/http'
 import type { createBootstrapStore } from '@/lib/bootstrap'
 import type { AgentChatMessage } from './AssistantMessage.vue'
 import type { AgentPurchaseOrderDraft, PurchaseOrderPreparation } from '@/types/automation'
@@ -108,11 +108,17 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
           if (existing) Object.assign(existing, chart)
           else message.charts.push({ ...chart, phase: chart.phase === 'finished' ? 'finished' : 'started' })
         }
-        if (event.event === 'error') { message.failed = true; message.error = String(event.data.message ?? '请求失败') }
+        if (event.event === 'error') {
+          message.failed = true
+          message.error = String(event.data.message ?? '请求失败')
+          if (isAuthExpiredPayload(event.data)) options.onAuthExpired?.()
+        }
       }, abortController.value.signal)
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
-        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) options.onAuthExpired?.()
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403) && bootstrap.state.token) {
+          options.onAuthExpired?.()
+        }
         assistant.failed = true; assistant.error = error instanceof Error ? error.message : '请求失败'
       }
     } finally {

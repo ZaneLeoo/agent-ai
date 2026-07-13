@@ -70,9 +70,9 @@ export function useAgentAuth(
     }
   }
 
-  function clearAuth() {
+  function clearAuth(message = '') {
     bootstrap.clearAuth()
-    loginError.value = ''
+    loginError.value = message
     refreshCaptcha()
   }
 

@@ -1,5 +1,5 @@
 import type { BootstrapState } from '@/lib/bootstrap'
-import { ApiError, withBaseApi } from './http'
+import { ApiError, isAuthExpiredStatus, notifyAuthExpired, withBaseApi } from './http'
 import { AGENT_STREAM_EVENT_TYPES, type AgentStreamEvent } from '@/types/agent-stream'
 
 export type ChatStreamEvent = AgentStreamEvent
@@ -12,6 +12,7 @@ export async function streamChat(bootstrap: BootstrapState, query: string, difyC
     body: JSON.stringify({ query, difyConversationId, inputs: {} }),
   })
   if (!response.ok) {
+    if (isAuthExpiredStatus(response.status)) notifyAuthExpired()
     throw new ApiError(response.status === 401 || response.status === 403 ? '登录状态已失效，请重新登录' : (response.statusText || '无法连接智能助手'), response.status)
   }
   if (!response.body) throw new Error('无法连接智能助手')
