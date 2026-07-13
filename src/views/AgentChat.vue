@@ -76,7 +76,14 @@
             <div class="truncate text-sm font-medium">{{ bootstrap.state.userName }}</div>
             <div class="text-[11px] text-muted-foreground">在线使用中</div>
           </div>
-          <Button variant="ghost" size="icon" class="size-8 text-muted-foreground hover:text-foreground" title="系统设置">
+          <Button
+            variant="ghost"
+            size="icon"
+            class="size-8 text-muted-foreground hover:text-foreground"
+            title="助手设置"
+            aria-label="助手设置"
+            @click="settingsDialogOpen = true"
+          >
             <SettingsIcon class="size-4" />
           </Button>
           <Button variant="ghost" size="icon" class="size-8 text-muted-foreground hover:text-foreground" title="退出登录" @click="handleLogout">
@@ -106,6 +113,8 @@
             :copied="copiedMessageId === message.id"
             :message="message"
             :retry-disabled="status !== 'ready'"
+            :base-api="bootstrap.state.baseApi"
+            :token="bootstrap.state.token"
             @copy="copyMessageContent"
             @retry="retryMessage"
             @confirm-purchase-order="openPurchaseOrderConfirmation"
@@ -147,6 +156,57 @@
       </DialogContent>
     </Dialog>
 
+    <Dialog :open="settingsDialogOpen" @update:open="settingsDialogOpen = $event">
+      <DialogContent class="max-w-xl">
+        <DialogHeader class="border-b pb-4">
+          <DialogTitle class="text-base font-semibold">系统设置</DialogTitle>
+        </DialogHeader>
+        
+        <div class="py-6">
+          <div class="rounded-xl border border-muted-foreground/10 bg-muted/10 p-5 flex items-center justify-between gap-6 transition-colors hover:bg-muted/15">
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-semibold text-foreground">管理历史对话</div>
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              class="shrink-0 border-destructive/20 text-destructive bg-destructive/5 hover:bg-destructive hover:text-white hover:border-destructive transition-all duration-200"
+              :disabled="history.length === 0"
+              @click="openClearAllHistory"
+            >
+              <Trash2Icon class="mr-1.5 size-3.5" />
+              清空全部
+            </Button>
+          </div>
+        </div>
+
+        <DialogFooter class="border-t pt-4">
+          <Button variant="outline" class="px-4 text-xs h-9" @click="settingsDialogOpen = false">
+            关闭
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog :open="clearAllHistoryDialogOpen" @update:open="clearAllHistoryDialogOpen = $event">
+      <DialogContent class="max-w-md" :show-close-button="false">
+        <DialogHeader>
+          <div class="mb-1 flex size-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <AlertTriangleIcon class="size-5" />
+          </div>
+          <DialogTitle>清空全部历史对话？</DialogTitle>
+          <DialogDescription>
+            将删除当前浏览器中保存的 {{ history.length }} 条历史对话，并清空当前对话内容。此操作无法恢复。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" @click="clearAllHistoryDialogOpen = false">取消</Button>
+          <Button variant="destructive" @click="confirmClearAllHistory">清空全部</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     <!-- Token 提示 -->
     <div v-if="!bootstrap.state.token" class="mt-2 text-center text-xs text-muted-foreground">
       ⚠ 未配置 token，请设置 VITE_AGENT_TOKEN 环境变量
@@ -161,6 +221,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { AUTH_EXPIRED_EVENT } from '@/api/http'
 import { Button } from '@/components/ui/button'
+import { toast } from 'vue-sonner'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import AssistantMessage from '@/features/agent/AssistantMessage.vue'
 import type { AgentChatMessage } from '@/features/agent/AssistantMessage.vue'
@@ -226,7 +287,10 @@ const purchaseOrderDialogOpen = ref(false)
 const selectedPurchaseOrderDraft = ref<AgentPurchaseOrderDraft | null>(null)
 const deleteDialogOpen = ref(false)
 const deleteTarget = ref<ConversationHistory | null>(null)
+const settingsDialogOpen = ref(false)
+const clearAllHistoryDialogOpen = ref(false)
 let skipNextHistoryPersist = false
+let lastAuthExpiredToastAt = 0
 const historyStorageKey = computed(() => `agent-ui:history:${bootstrap.state.userName || 'anonymous'}`)
 const activeTitle = computed(() => history.value.find(item => item.id === activeHistoryId.value)?.title || '')
 const userInitial = computed(() => (bootstrap.state.userName || '用').slice(0, 1).toUpperCase())
@@ -289,11 +353,30 @@ function confirmDeleteHistory() {
   deleteTarget.value = null
   deleteDialogOpen.value = false
 }
+function openClearAllHistory() {
+  if (!history.value.length) return
+  settingsDialogOpen.value = false
+  clearAllHistoryDialogOpen.value = true
+}
+function confirmClearAllHistory() {
+  stopStream()
+  clearMessages()
+  history.value = []
+  activeHistoryId.value = ''
+  localStorage.removeItem(historyStorageKey.value)
+  clearAllHistoryDialogOpen.value = false
+  toast.success('历史对话已清空')
+}
 function handleAuthExpired() {
   stopStream()
   clearAuth('登录状态已过期，请重新登录')
   clearMessages()
   activeHistoryId.value = ''
+  const now = Date.now()
+  if (now - lastAuthExpiredToastAt > 1500) {
+    toast.error('登录状态已过期', { description: '请重新登录后继续使用智能助手。' })
+    lastAuthExpiredToastAt = now
+  }
 }
 
 function startNewConversation() {

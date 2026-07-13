@@ -8,7 +8,7 @@
     >
       <!-- 统一的执行过程折叠块 -->
       <Reasoning
-        v-if="reasoningChain.length"
+        v-if="reasoningChain.length || (message.streaming && !answerText)"
         :is-streaming="message.streaming"
         class="mb-3"
       >
@@ -48,8 +48,8 @@
 
       <!-- 最终回复正文 -->
       <MessageResponse
-        v-if="answerText"
-        :content="answerText"
+        v-if="renderedAnswerText"
+        :content="renderedAnswerText"
         class="h-auto min-h-0 w-full"
       />
 
@@ -57,6 +57,13 @@
         v-for="chart in message.charts"
         :key="chart.callId"
         :chart="chart"
+      />
+
+      <GeneratedFilesMessage
+        v-if="message.files?.length"
+        :files="message.files"
+        :base-api="baseApi"
+        :token="token"
       />
 
       <PurchaseOrderDraftCard
@@ -188,7 +195,9 @@ import {
   Source,
 } from '@/components/ai-elements/sources'
 import type { AgentToolCall, AgentKnowledgeCall, AgentChart } from './useAgentChat'
+import type { AgentFile } from './useAgentChat'
 import ChartMessage from './ChartMessage.vue'
+import GeneratedFilesMessage from './GeneratedFilesMessage.vue'
 import PurchaseOrderDraftCard from './PurchaseOrderDraftCard.vue'
 import type { AgentPurchaseOrderDraft } from '@/types/automation'
 
@@ -204,6 +213,7 @@ export interface AgentChatMessage {
   tools: AgentToolCall[]
   knowledges: AgentKnowledgeCall[]
   charts: AgentChart[]
+  files: AgentFile[]
   purchaseOrderDrafts: AgentPurchaseOrderDraft[]
 }
 
@@ -211,6 +221,8 @@ const props = defineProps<{
   message: AgentChatMessage
   copied: boolean
   retryDisabled: boolean
+  baseApi: string
+  token: string
 }>()
 
 const sourceCount = computed(() => props.message.knowledges.reduce((count, item) => count + (item.sources?.length || 1), 0))
@@ -317,6 +329,22 @@ const answerText = computed(() => {
     .map(block => block.content)
     .join('')
 })
+
+// Dify 文件插件会在文本中输出 /files/tools/... 链接。该地址是 Dify 内部路径，
+// 浏览器不能直接携带 RuoYi JWT 访问，也不应触发外部链接确认；文件卡片负责下载。
+const renderedAnswerText = computed(() => sanitizeDifyFileLinks(answerText.value))
+
+function sanitizeDifyFileLinks(content: string) {
+  const sanitized = content.replace(
+    /\[([^\]\n]+)\]\((?:(?:https?:\/\/[^)\s]+)?\/files\/tools\/[^)\s]+)\)/gi,
+    '**$1**',
+  )
+  // 文件卡片已经展示了文件名，正文中常见的“文件名称：xxx.xlsx”仅保留一次即可。
+  return sanitized.replace(
+    /^\s*(?:[-*]\s*)?(?:\*{0,2})文件(?:名称|名)(?:\*{0,2})\s*[:：].*\.(?:xlsx?|docx?|pdf|pptx?)\s*$/gim,
+    '',
+  )
+}
 
 const emit = defineEmits<{
   copy: [message: AgentChatMessage]

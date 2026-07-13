@@ -47,6 +47,23 @@ export interface AgentChart {
   option?: Record<string, unknown>
 }
 
+export interface AgentFile {
+  resourceId: string
+  name: string
+  filename?: string
+  extension?: string
+  mediaType?: string
+  kind?: 'spreadsheet' | 'document' | 'pdf' | 'presentation' | 'image' | 'file' | string
+  size?: number
+  downloadUrl?: string
+  preview?: 'browser' | 'download' | string
+  phase: 'available' | 'failed'
+  error?: string
+  toolName?: string
+  sourceFileId?: string
+  sourceFilename?: string
+}
+
 /** 基础聊天状态：只处理用户消息、Dify 文本流与停止。 */
 export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired?: () => void } = {}) {
   const messages = ref<AgentChatMessage[]>([])
@@ -58,7 +75,7 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
 
   function baseMessage(role: 'user' | 'assistant', content: string): AgentChatMessage {
     return { id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}`, role, content,
-      streaming: false, stopped: false, failed: false, error: '', retryQuery: '', tools: [], knowledges: [], charts: [], purchaseOrderDrafts: [] }
+      streaming: false, stopped: false, failed: false, error: '', retryQuery: '', tools: [], knowledges: [], charts: [], files: [], purchaseOrderDrafts: [] }
   }
   function createUserMessage(content: string) { return baseMessage('user', content) }
   function createAssistantMessage(content = '', retryQuery = '') { return { ...baseMessage('assistant', content), retryQuery } }
@@ -85,7 +102,16 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
       await streamChat(bootstrap.state, text, difyConversationId, event => {
         const message = messages.value[index]; if (!message) return
         if (event.event === 'message' && typeof event.data.content === 'string') message.content += event.data.content
-        if (event.event === 'metadata' && typeof event.data.conversationId === 'string') difyConversationId = event.data.conversationId
+        if (event.event === 'metadata' || event.event === 'done') {
+          if (typeof event.data.conversationId === 'string') difyConversationId = event.data.conversationId
+          if (Array.isArray(event.data.files)) {
+            event.data.files.forEach(value => {
+              if (!value || typeof value !== 'object' || Array.isArray(value)) return
+              const file = value as AgentFile
+              if (typeof file.resourceId === 'string' && typeof file.name === 'string') upsertFile(message, file)
+            })
+          }
+        }
         if (event.event === 'tool' && typeof event.data.callId === 'string') {
           const tool = event.data as unknown as AgentToolCall
           const existing = message.tools.find(item => item.callId === tool.callId)
@@ -107,6 +133,10 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
           const existing = message.charts.find(item => item.callId === chart.callId)
           if (existing) Object.assign(existing, chart)
           else message.charts.push({ ...chart, phase: chart.phase === 'finished' ? 'finished' : 'started' })
+        }
+        if (event.event === 'file' && typeof event.data.resourceId === 'string' && typeof event.data.name === 'string') {
+          const file = event.data as unknown as AgentFile
+          upsertFile(message, file)
         }
         if (event.event === 'error') {
           message.failed = true
@@ -141,7 +171,7 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
   function clearMessages() { messages.value = []; difyConversationId = undefined }
   function loadConversation(historyMessages: AgentChatMessage[], conversationId?: string) {
     stopStream()
-    messages.value = historyMessages.map(message => ({ ...message, streaming: false, tools: message.tools ?? [], knowledges: message.knowledges ?? [], charts: message.charts ?? [], purchaseOrderDrafts: message.purchaseOrderDrafts ?? [] }))
+    messages.value = historyMessages.map(message => ({ ...message, streaming: false, tools: message.tools ?? [], knowledges: message.knowledges ?? [], charts: message.charts ?? [], files: message.files ?? [], purchaseOrderDrafts: message.purchaseOrderDrafts ?? [] }))
     difyConversationId = conversationId
   }
   function getConversationId() { return difyConversationId }
@@ -149,6 +179,13 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
 
   return { messages, status, copiedMessageId, handleSuggestionClick, handleSubmit, retryMessage,
     copyMessageContent, stopStream, clearMessages, loadConversation, getConversationId, cleanupChat }
+}
+
+function upsertFile(message: AgentChatMessage, file: AgentFile) {
+  const existing = message.files.find(item => item.resourceId === file.resourceId)
+  const normalized = { ...file, phase: file.phase === 'failed' ? 'failed' : 'available' } as AgentFile
+  if (existing) Object.assign(existing, normalized)
+  else message.files.push(normalized)
 }
 
 function extractPurchaseOrderPreparation(tool: AgentToolCall): PurchaseOrderPreparation | null {
