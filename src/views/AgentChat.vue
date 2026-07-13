@@ -40,18 +40,32 @@
       <div class="min-h-0 flex-1 overflow-y-auto px-3">
         <div v-for="group in historyGroups" :key="group.label" class="mb-5">
           <div class="px-2 pb-2 text-xs font-medium text-muted-foreground">{{ group.label }}</div>
-          <button
+          <div
             v-for="item in group.items"
             :key="item.id"
-            class="agent-history-item group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors"
+            class="agent-history-item group flex w-full items-center gap-1 rounded-lg px-1 py-1 text-left text-sm transition-colors"
             :class="item.id === activeHistoryId ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-muted-foreground hover:text-foreground'"
-            type="button"
-            @click="openHistory(item)"
           >
-            <MessageSquareIcon class="size-4 shrink-0 opacity-80" />
-            <span class="min-w-0 flex-1 truncate">{{ item.title }}</span>
-            <span class="text-[11px] text-muted-foreground/70 group-hover:text-primary/70">{{ formatHistoryTime(item.updatedAt) }}</span>
-          </button>
+            <button
+              type="button"
+              class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none"
+              :aria-current="item.id === activeHistoryId ? 'page' : undefined"
+              @click="openHistory(item)"
+            >
+              <MessageSquareIcon class="size-4 shrink-0 opacity-80" />
+              <span class="min-w-0 flex-1 truncate">{{ item.title }}</span>
+              <span class="text-[11px] text-muted-foreground/70 group-hover:text-primary/70">{{ formatHistoryTime(item.updatedAt) }}</span>
+            </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              class="size-7 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+              title="删除对话"
+              @click="deleteHistory(item)"
+            >
+              <Trash2Icon class="size-3.5" />
+            </Button>
+          </div>
         </div>
         <p v-if="history.length === 0" class="px-3 py-4 text-xs text-muted-foreground">暂无历史对话</p>
       </div>
@@ -124,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-import { BookmarkIcon, ChevronRightIcon, LogOutIcon, MessageSquareIcon, PlusIcon, SearchIcon, Share2Icon, SlidersHorizontalIcon, SparklesIcon, SettingsIcon } from '@lucide/vue'
+import { BookmarkIcon, ChevronRightIcon, LogOutIcon, MessageSquareIcon, PlusIcon, SearchIcon, Share2Icon, SlidersHorizontalIcon, SparklesIcon, SettingsIcon, Trash2Icon } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
@@ -190,6 +204,7 @@ const activeHistoryId = ref('')
 const searchQuery = ref('')
 const purchaseOrderDialogOpen = ref(false)
 const selectedPurchaseOrderDraft = ref<AgentPurchaseOrderDraft | null>(null)
+let skipNextHistoryPersist = false
 const historyStorageKey = computed(() => `agent-ui:history:${bootstrap.state.userName || 'anonymous'}`)
 const activeTitle = computed(() => history.value.find(item => item.id === activeHistoryId.value)?.title || '')
 const userInitial = computed(() => (bootstrap.state.userName || '用').slice(0, 1).toUpperCase())
@@ -210,7 +225,10 @@ function formatHistoryTime(timestamp: number) {
 }
 
 function loadHistory() {
-  try { history.value = JSON.parse(localStorage.getItem(historyStorageKey.value) || '[]') } catch { history.value = [] }
+  try {
+    const stored = JSON.parse(localStorage.getItem(historyStorageKey.value) || '[]')
+    history.value = Array.isArray(stored) ? stored.sort((left, right) => right.updatedAt - left.updatedAt) : []
+  } catch { history.value = [] }
 }
 function persistHistory() {
   if (!messages.value.length) return
@@ -228,8 +246,19 @@ function persistHistory() {
   localStorage.setItem(historyStorageKey.value, JSON.stringify(history.value))
 }
 function openHistory(item: ConversationHistory) {
+  skipNextHistoryPersist = true
   loadConversation(item.messages, item.conversationId)
   activeHistoryId.value = item.id
+}
+function deleteHistory(item: ConversationHistory) {
+  if (!window.confirm(`确定删除对话“${item.title}”吗？删除后无法恢复。`)) return
+  history.value = history.value.filter(entry => entry.id !== item.id)
+  localStorage.setItem(historyStorageKey.value, JSON.stringify(history.value))
+  if (activeHistoryId.value === item.id) {
+    stopStream()
+    clearMessages()
+    activeHistoryId.value = ''
+  }
 }
 function handleAuthExpired() {
   stopStream()
@@ -270,7 +299,13 @@ watch(() => bootstrap.state.ready, (ready) => {
 watch(() => bootstrap.state.token, (token) => {
   if (!token) refreshCaptcha()
 })
-watch(messages, () => persistHistory(), { deep: true })
+watch(messages, () => {
+  if (skipNextHistoryPersist) {
+    skipNextHistoryPersist = false
+    return
+  }
+  persistHistory()
+}, { deep: true })
 watch(historyStorageKey, () => loadHistory())
 onBeforeUnmount(() => { cleanupChat(); bootstrap.stop() })
 </script>
