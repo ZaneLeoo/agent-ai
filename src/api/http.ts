@@ -16,7 +16,8 @@ export function isAuthExpiredPayload(value: unknown): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const data = value as Record<string, unknown>
   if (isAuthExpiredStatus(data.status) || isAuthExpiredStatus(data.code) || isAuthExpiredStatus(data.httpStatus)) return true
-  return typeof data.message === 'string' && /认证失败|登录状态已失效|token.*(失效|过期)|未登录/i.test(data.message)
+  const message = typeof data.message === 'string' ? data.message : data.msg
+  return typeof message === 'string' && /认证失败|登录状态已失效|token.*(失效|过期)|未登录/i.test(message)
 }
 
 export class ApiError extends Error {

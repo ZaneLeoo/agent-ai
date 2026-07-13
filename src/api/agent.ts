@@ -1,5 +1,5 @@
 import type { BootstrapState } from '@/lib/bootstrap'
-import { ApiError, isAuthExpiredStatus, notifyAuthExpired, withBaseApi } from './http'
+import { ApiError, isAuthExpiredPayload, isAuthExpiredStatus, notifyAuthExpired, withBaseApi } from './http'
 import { AGENT_STREAM_EVENT_TYPES, type AgentStreamEvent } from '@/types/agent-stream'
 
 export type ChatStreamEvent = AgentStreamEvent
@@ -14,6 +14,18 @@ export async function streamChat(bootstrap: BootstrapState, query: string, difyC
   if (!response.ok) {
     if (isAuthExpiredStatus(response.status)) notifyAuthExpired()
     throw new ApiError(response.status === 401 || response.status === 403 ? '登录状态已失效，请重新登录' : (response.statusText || '无法连接智能助手'), response.status)
+  }
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.toLowerCase().includes('text/event-stream')) {
+    const text = await response.text()
+    let payload: unknown = null
+    try { payload = text ? JSON.parse(text) : null } catch { payload = null }
+    if (isAuthExpiredPayload(payload)) notifyAuthExpired()
+    const data = payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload as Record<string, unknown> : undefined
+    const status = data?.code ?? response.status
+    const message = data?.msg ?? data?.message ?? response.statusText ?? '无法连接智能助手'
+    throw new ApiError(String(message), typeof status === 'number' ? status : response.status)
   }
   if (!response.body) throw new Error('无法连接智能助手')
   const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
