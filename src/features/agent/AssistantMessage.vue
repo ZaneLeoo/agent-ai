@@ -8,7 +8,7 @@
     >
       <!-- 统一的执行过程折叠块 -->
       <Reasoning
-        v-if="reasoningChain.length || (message.streaming && !answerText)"
+        v-if="reasoningChain.length"
         :is-streaming="message.streaming"
         class="mb-3"
       >
