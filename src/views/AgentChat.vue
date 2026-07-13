@@ -129,6 +129,24 @@
       @created="handlePurchaseOrderCreated"
     />
 
+    <Dialog :open="deleteDialogOpen" @update:open="deleteDialogOpen = $event">
+      <DialogContent class="max-w-md" :show-close-button="false">
+        <DialogHeader>
+          <div class="mb-1 flex size-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <AlertTriangleIcon class="size-5" />
+          </div>
+          <DialogTitle>删除这条对话？</DialogTitle>
+          <DialogDescription>
+            删除后将无法恢复。{{ deleteTarget ? `“${deleteTarget.title}”` : '这条对话' }}中的历史消息也会从当前浏览器中移除。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" @click="deleteDialogOpen = false">取消</Button>
+          <Button variant="destructive" @click="confirmDeleteHistory">删除对话</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     <!-- Token 提示 -->
     <div v-if="!bootstrap.state.token" class="mt-2 text-center text-xs text-muted-foreground">
       ⚠ 未配置 token，请设置 VITE_AGENT_TOKEN 环境变量
@@ -138,10 +156,11 @@
 </template>
 
 <script setup lang="ts">
-import { BookmarkIcon, ChevronRightIcon, LogOutIcon, MessageSquareIcon, PlusIcon, SearchIcon, Share2Icon, SlidersHorizontalIcon, SparklesIcon, SettingsIcon, Trash2Icon } from '@lucide/vue'
+import { AlertTriangleIcon, BookmarkIcon, ChevronRightIcon, LogOutIcon, MessageSquareIcon, PlusIcon, SearchIcon, Share2Icon, SlidersHorizontalIcon, SparklesIcon, SettingsIcon, Trash2Icon } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createBootstrapStore } from '@/lib/bootstrap'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import AssistantMessage from '@/features/agent/AssistantMessage.vue'
 import type { AgentChatMessage } from '@/features/agent/AssistantMessage.vue'
 import PurchaseOrderConfirmDialog from '@/features/agent/PurchaseOrderConfirmDialog.vue'
@@ -204,6 +223,8 @@ const activeHistoryId = ref('')
 const searchQuery = ref('')
 const purchaseOrderDialogOpen = ref(false)
 const selectedPurchaseOrderDraft = ref<AgentPurchaseOrderDraft | null>(null)
+const deleteDialogOpen = ref(false)
+const deleteTarget = ref<ConversationHistory | null>(null)
 let skipNextHistoryPersist = false
 const historyStorageKey = computed(() => `agent-ui:history:${bootstrap.state.userName || 'anonymous'}`)
 const activeTitle = computed(() => history.value.find(item => item.id === activeHistoryId.value)?.title || '')
@@ -251,7 +272,12 @@ function openHistory(item: ConversationHistory) {
   activeHistoryId.value = item.id
 }
 function deleteHistory(item: ConversationHistory) {
-  if (!window.confirm(`确定删除对话“${item.title}”吗？删除后无法恢复。`)) return
+  deleteTarget.value = item
+  deleteDialogOpen.value = true
+}
+function confirmDeleteHistory() {
+  const item = deleteTarget.value
+  if (!item) return
   history.value = history.value.filter(entry => entry.id !== item.id)
   localStorage.setItem(historyStorageKey.value, JSON.stringify(history.value))
   if (activeHistoryId.value === item.id) {
@@ -259,6 +285,8 @@ function deleteHistory(item: ConversationHistory) {
     clearMessages()
     activeHistoryId.value = ''
   }
+  deleteTarget.value = null
+  deleteDialogOpen.value = false
 }
 function handleAuthExpired() {
   stopStream()
