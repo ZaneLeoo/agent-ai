@@ -205,9 +205,9 @@ const {
 } = useAgentAuth(bootstrap)
 
 const tips = [
-  '查询 PCB控制板的当前库存并生成图表',
-  '根据知识库，销售人员跟进客户时需要注意什么？',
-  '帮我向 SUP001 采购 10 个 PCB控制板，含税单价 25.5 元',
+  '完成灯杆组件（lamppost）装配工序的步骤和注意事项',
+  '查询智能护眼台灯（smart-desk-lamp）的当前库存',
+  '向 SUP001（深圳鸿发电子科技有限公司）采购 10 套灯杆组件',
 ]
 
 interface ConversationHistory {
