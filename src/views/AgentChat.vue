@@ -205,9 +205,9 @@ const {
 } = useAgentAuth(bootstrap)
 
 const tips = [
-  '帮我总结一下本月经营情况',
-  '分析销售趋势，生成图表和明细表',
+  '查询 PCB控制板的当前库存并生成图表',
   '根据知识库，销售人员跟进客户时需要注意什么？',
+  '帮我向 SUP001 采购 10 个 PCB控制板，含税单价 25.5 元',
 ]
 
 interface ConversationHistory {

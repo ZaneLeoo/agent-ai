@@ -2,8 +2,8 @@
   <div class="flex min-h-full flex-col items-center justify-center gap-6 p-8 text-center">
     <SparklesIcon class="size-8 text-muted-foreground" />
     <div class="space-y-1">
-      <h3 class="text-lg font-semibold">今天想分析什么？</h3>
-      <p class="text-sm text-muted-foreground">可以提问业务问题、分析经营数据，或直接生成可视化图表。</p>
+      <h3 class="text-lg font-semibold">今天想处理什么？</h3>
+      <p class="text-sm text-muted-foreground">可以查询业务数据、查阅知识库、生成图表，或让助手准备业务单据。</p>
     </div>
     <div class="grid w-full max-w-lg grid-cols-1 gap-3 sm:grid-cols-3">
       <button
