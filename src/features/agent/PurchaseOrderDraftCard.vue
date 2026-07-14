@@ -1,5 +1,5 @@
 <template>
-  <section class="mt-4 max-w-3xl overflow-hidden rounded-xl border bg-card shadow-sm">
+  <section class="mt-4 max-w-3xl overflow-hidden rounded-xl border bg-card shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out">
     <div class="flex items-start justify-between gap-4 border-b bg-primary/[0.03] px-4 py-3">
       <div class="flex min-w-0 items-start gap-3">
         <div class="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">

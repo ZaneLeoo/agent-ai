@@ -66,12 +66,14 @@
         :token="token"
       />
 
-      <PurchaseOrderDraftCard
-        v-for="draft in message.purchaseOrderDrafts"
-        :key="draft.callId"
-        :item="draft"
-        @confirm="emit('confirmPurchaseOrder', $event)"
-      />
+      <template v-if="!message.streaming">
+        <PurchaseOrderDraftCard
+          v-for="draft in message.purchaseOrderDrafts"
+          :key="draft.callId"
+          :item="draft"
+          @confirm="emit('confirmPurchaseOrder', $event)"
+        />
+      </template>
 
       <!-- 知识库来源引用 -->
       <Sources
