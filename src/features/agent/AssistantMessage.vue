@@ -66,12 +66,14 @@
         :token="token"
       />
 
-      <PurchaseOrderDraftCard
-        v-for="draft in message.purchaseOrderDrafts"
-        :key="draft.callId"
-        :item="draft"
-        @confirm="emit('confirmPurchaseOrder', $event)"
-      />
+      <template v-if="showDeferredActions">
+        <PurchaseOrderDraftCard
+          v-for="draft in message.purchaseOrderDrafts"
+          :key="draft.callId"
+          :item="draft"
+          @confirm="emit('confirmPurchaseOrder', $event)"
+        />
+      </template>
 
       <!-- 知识库来源引用 -->
       <Sources
@@ -171,7 +173,7 @@
 
 <script setup lang="ts">
 import { CheckIcon, CopyIcon, Search, BookIcon, ChevronDown, RotateCw, SparklesIcon } from '@lucide/vue'
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Markdown } from 'vue-stream-markdown'
 import {
@@ -224,6 +226,29 @@ const props = defineProps<{
   baseApi: string
   token: string
 }>()
+
+const MARKDOWN_SETTLE_DELAY = 550
+const showDeferredActions = ref(!props.message.streaming)
+let deferredActionsTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(
+  () => props.message.streaming,
+  streaming => {
+    if (deferredActionsTimer) clearTimeout(deferredActionsTimer)
+    if (streaming) {
+      showDeferredActions.value = false
+      return
+    }
+    deferredActionsTimer = setTimeout(() => {
+      showDeferredActions.value = true
+      deferredActionsTimer = undefined
+    }, MARKDOWN_SETTLE_DELAY)
+  },
+)
+
+onBeforeUnmount(() => {
+  if (deferredActionsTimer) clearTimeout(deferredActionsTimer)
+})
 
 const sourceCount = computed(() => props.message.knowledges.reduce((count, item) => count + (item.sources?.length || 1), 0))
 
