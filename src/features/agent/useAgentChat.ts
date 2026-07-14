@@ -8,13 +8,6 @@ import type { AgentPurchaseOrderDraft, PurchaseOrderDraft } from '@/types/automa
 
 type BootstrapStore = ReturnType<typeof createBootstrapStore>
 
-interface TypingSession {
-  message: AgentChatMessage
-  buffer: string
-  timer: ReturnType<typeof setTimeout> | null
-  networkDone: boolean
-}
-
 export interface AgentToolCall {
   callId: string
   toolName: string
@@ -80,8 +73,6 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
   let difyConversationId: string | undefined
   let copiedResetTimer: ReturnType<typeof setTimeout> | undefined
 
-  let activeTypingSession: TypingSession | null = null
-
   function baseMessage(role: 'user' | 'assistant', content: string): AgentChatMessage {
     return { id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}`, role, content,
       streaming: false, stopped: false, failed: false, error: '', retryQuery: '', tools: [], knowledges: [], charts: [], files: [], purchaseOrderDrafts: [] }
@@ -102,50 +93,15 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
     if (status.value !== 'ready' || !message.retryQuery) return
     messages.value.push(createUserMessage(message.retryQuery)); await sendMessage(message.retryQuery)
   }
-  /** 启动当前回复的平滑文字输出。 */
-  function ensureTypingLoop(session: TypingSession) {
-    if (session.timer) return
-    const tick = () => {
-      if (session.buffer.length === 0) {
-        session.timer = null
-        if (session.networkDone) finishTypingSession(session)
-        return
-      }
-      let charsToTake = 1
-      if (session.buffer.length > 25) {
-        charsToTake = 4
-      } else if (session.buffer.length > 10) {
-        charsToTake = 2
-      }
-      session.message.content += session.buffer.slice(0, charsToTake)
-      session.buffer = session.buffer.slice(charsToTake)
-      session.timer = setTimeout(tick, 30)
-    }
-    tick()
-  }
-
-  /** 在网络与文字输出都结束后恢复输入状态。 */
-  function finishTypingSession(session: TypingSession) {
-    session.message.streaming = false
-    if (activeTypingSession !== session) return
-    activeTypingSession = null
-    status.value = 'ready'
-  }
-
   async function sendMessage(text: string) {
     const assistant = createAssistantMessage('', text); assistant.streaming = true
     messages.value.push(assistant); const index = messages.value.length - 1
     status.value = 'submitted'; abortController.value = new AbortController()
-    const typingSession: TypingSession = { message: assistant, buffer: '', timer: null, networkDone: false }
-    activeTypingSession = typingSession
     try {
       status.value = 'streaming'
       await streamChat(bootstrap.state, text, difyConversationId, event => {
         const message = messages.value[index]; if (!message) return
-        if (event.event === 'message' && typeof event.data.content === 'string') {
-          typingSession.buffer += event.data.content
-          ensureTypingLoop(typingSession)
-        }
+        if (event.event === 'message' && typeof event.data.content === 'string') message.content += event.data.content
         if (event.event === 'metadata' || event.event === 'done') {
           if (typeof event.data.conversationId === 'string') difyConversationId = event.data.conversationId
           if (Array.isArray(event.data.files)) {
@@ -196,23 +152,13 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
         assistant.failed = true; assistant.error = error instanceof Error ? error.message : '请求失败'
       }
     } finally {
-      typingSession.networkDone = true
-      abortController.value = null
-      if (!typingSession.timer && typingSession.buffer.length === 0) finishTypingSession(typingSession)
+      const message = messages.value[index]
+      if (message) message.streaming = false
+      status.value = 'ready'; abortController.value = null
     }
   }
   function stopStream() {
     abortController.value?.abort(); abortController.value = null; status.value = 'ready'
-    if (activeTypingSession?.timer) {
-      clearTimeout(activeTypingSession.timer)
-      activeTypingSession.timer = null
-    }
-    if (activeTypingSession) {
-      activeTypingSession.buffer = ''
-      activeTypingSession.message.streaming = false
-      activeTypingSession.message.stopped = true
-      activeTypingSession = null
-    }
     const message = [...messages.value].reverse().find(item => item.role === 'assistant')
     if (message) { message.streaming = false; message.stopped = true }
   }
@@ -257,7 +203,11 @@ function extractPurchaseOrderDraft(tool: AgentToolCall): PurchaseOrderDraft | nu
 
 function parseOutput(output: unknown): unknown {
   if (typeof output !== 'string') return output
-  try { return JSON.parse(output) } catch { return null }
+  try {
+    return JSON.parse(output)
+  } catch {
+    return null
+  }
 }
 
 function createRequestId() {
