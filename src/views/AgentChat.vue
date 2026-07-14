@@ -201,37 +201,37 @@
         <div class="flex items-center gap-1"><Button variant="ghost" size="icon" class="size-9 text-muted-foreground" title="收藏"><BookmarkIcon class="size-4" /></Button><Button variant="ghost" size="icon" class="size-9 text-muted-foreground" title="分享"><Share2Icon class="size-4" /></Button><Button variant="ghost" size="icon" class="size-9 text-muted-foreground" title="新建对话" @click="startNewConversation"><PlusIcon class="size-4" /></Button></div>
       </header>
       <div class="flex min-h-0 flex-1 flex-col px-4 md:px-8 pb-4 md:pb-6">
-      <Conversation class="h-full">
-      <ConversationContent>
-        <!-- 空状态 -->
-        <ChatWelcome
-          v-if="messages.length === 0"
-          :tips="tips"
-          @select="handleSuggestionClick"
-        />
+        <Conversation class="h-full">
+          <ConversationContent class="mx-auto w-full max-w-4xl">
+            <!-- 空状态 -->
+            <ChatWelcome
+              v-if="messages.length === 0"
+              :tips="tips"
+              @select="handleSuggestionClick"
+            />
 
-        <!-- 消息列表 -->
-        <template v-for="message in messages" :key="message.id">
-          <AssistantMessage
-            :copied="copiedMessageId === message.id"
-            :message="message"
-            :retry-disabled="status !== 'ready'"
-            :base-api="bootstrap.state.baseApi"
-            :token="bootstrap.state.token"
-            @copy="copyMessageContent"
-            @retry="retryMessage"
-            @confirm-purchase-order="openPurchaseOrderConfirmation"
-          />
-        </template>
+            <!-- 消息列表 -->
+            <template v-for="message in messages" :key="message.id">
+              <AssistantMessage
+                :copied="copiedMessageId === message.id"
+                :message="message"
+                :retry-disabled="status !== 'ready'"
+                :base-api="bootstrap.state.baseApi"
+                :token="bootstrap.state.token"
+                @copy="copyMessageContent"
+                @retry="retryMessage"
+                @confirm-purchase-order="openPurchaseOrderConfirmation"
+              />
+            </template>
 
-        <Loader v-if="status === 'submitted'" class="mx-auto mt-4" />
-      </ConversationContent>
-      <ConversationScrollButton />
-    </Conversation>
+            <Loader v-if="status === 'submitted'" class="mx-auto mt-4" />
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
 
-    <!-- 输入区域 -->
-    <ChatComposer :status="status" @submit="handleSubmit" />
-    </div>
+        <!-- 输入区域 -->
+        <ChatComposer :status="status" class="mx-auto w-full max-w-4xl shrink-0" @submit="handleSubmit" />
+      </div>
 
     <PurchaseOrderConfirmDialog
       v-if="selectedPurchaseOrderDraft"
