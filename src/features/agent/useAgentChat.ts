@@ -1,6 +1,8 @@
 import type { ChatStatus } from 'ai'
 import { ref } from 'vue'
-import { streamChat } from '@/api/agent'
+import { streamChat, uploadAgentInputFile } from '@/api/agent'
+import type { AgentInputFileUpload } from '@/api/agent'
+import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import { ApiError, isAuthExpiredPayload } from '@/api/http'
 import type { createBootstrapStore } from '@/lib/bootstrap'
 import type { AgentChatMessage } from './AssistantMessage.vue'
@@ -64,6 +66,13 @@ export interface AgentFile {
   sourceFilename?: string
 }
 
+export interface AgentInputAttachment {
+  name: string
+  mediaType?: string
+  size?: number
+  previewUrl?: string
+}
+
 /** 基础聊天状态：只处理用户消息、Dify 文本流与停止。 */
 export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired?: () => void } = {}) {
   const messages = ref<AgentChatMessage[]>([])
@@ -75,7 +84,7 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
 
   function baseMessage(role: 'user' | 'assistant', content: string): AgentChatMessage {
     return { id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}`, role, content,
-      streaming: false, stopped: false, failed: false, error: '', retryQuery: '', tools: [], knowledges: [], charts: [], files: [], purchaseOrderDrafts: [] }
+      streaming: false, stopped: false, failed: false, error: '', retryQuery: '', tools: [], knowledges: [], charts: [], files: [], attachments: [], purchaseOrderDrafts: [] }
   }
   function createUserMessage(content: string) { return baseMessage('user', content) }
   function createAssistantMessage(content = '', retryQuery = '') { return { ...baseMessage('assistant', content), retryQuery } }
@@ -84,18 +93,44 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
     if (status.value !== 'ready') return
     messages.value.push(createUserMessage(text)); void sendMessage(text)
   }
-  async function handleSubmit(event: { text: string }) {
+  async function handleSubmit(event: PromptInputMessage) {
     if (status.value !== 'ready') { stopStream(); return }
-    const text = event.text?.trim(); if (!text) return
-    messages.value.push(createUserMessage(text)); await sendMessage(text)
+    const selectedFiles = event.files
+      .map(item => (item as typeof item & { file?: File }).file)
+      .filter((file): file is File => file instanceof File)
+    const text = event.text?.trim() || (selectedFiles.length ? '请分析附件内容' : '')
+    if (!text) return
+    const userMessage = createUserMessage(text)
+    userMessage.attachments = event.files.map((item, index) => ({
+      name: selectedFiles[index]?.name || item.filename || '附件',
+      mediaType: selectedFiles[index]?.type || item.mediaType,
+      size: selectedFiles[index]?.size,
+      previewUrl: item.url,
+    }))
+    messages.value.push(userMessage)
+    const assistant = createAssistantMessage('', text)
+    assistant.streaming = true
+    messages.value.push(assistant)
+    status.value = 'submitted'
+    try {
+      const uploadedFiles = await Promise.all(selectedFiles.map(file => uploadAgentInputFile(bootstrap.state, file)))
+      await sendMessage(text, uploadedFiles, assistant)
+    } catch (error) {
+      assistant.failed = true
+      assistant.error = error instanceof Error ? error.message : '附件上传失败'
+      assistant.streaming = false
+      status.value = 'ready'
+    }
   }
   async function retryMessage(message: AgentChatMessage) {
     if (status.value !== 'ready' || !message.retryQuery) return
     messages.value.push(createUserMessage(message.retryQuery)); await sendMessage(message.retryQuery)
   }
-  async function sendMessage(text: string) {
-    const assistant = createAssistantMessage('', text); assistant.streaming = true
-    messages.value.push(assistant); const index = messages.value.length - 1
+  async function sendMessage(text: string, inputFiles: AgentInputFileUpload[] = [], existingAssistant?: AgentChatMessage) {
+    const assistant = existingAssistant ?? createAssistantMessage('', text)
+    assistant.streaming = true
+    if (!existingAssistant) messages.value.push(assistant)
+    const index = messages.value.indexOf(assistant)
     status.value = 'submitted'; abortController.value = new AbortController()
     try {
       status.value = 'streaming'
@@ -143,7 +178,7 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
           message.error = String(event.data.message ?? '请求失败')
           if (isAuthExpiredPayload(event.data)) options.onAuthExpired?.()
         }
-      }, abortController.value.signal)
+      }, abortController.value.signal, inputFiles)
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         if (error instanceof ApiError && (error.status === 401 || error.status === 403) && bootstrap.state.token) {
@@ -171,7 +206,7 @@ export function useAgentChat(bootstrap: BootstrapStore, options: { onAuthExpired
   function clearMessages() { messages.value = []; difyConversationId = undefined }
   function loadConversation(historyMessages: AgentChatMessage[], conversationId?: string) {
     stopStream()
-    messages.value = historyMessages.map(message => ({ ...message, streaming: false, tools: message.tools ?? [], knowledges: message.knowledges ?? [], charts: message.charts ?? [], files: message.files ?? [], purchaseOrderDrafts: message.purchaseOrderDrafts ?? [] }))
+    messages.value = historyMessages.map(message => ({ ...message, streaming: false, tools: message.tools ?? [], knowledges: message.knowledges ?? [], charts: message.charts ?? [], files: message.files ?? [], attachments: message.attachments ?? [], purchaseOrderDrafts: message.purchaseOrderDrafts ?? [] }))
     difyConversationId = conversationId
   }
   function getConversationId() { return difyConversationId }

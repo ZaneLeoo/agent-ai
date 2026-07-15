@@ -224,7 +224,6 @@
               />
             </template>
 
-            <Loader v-if="status === 'submitted'" class="mx-auto mt-4" />
           </ConversationContent>
           <ConversationScrollButton />
         </Conversation>
@@ -340,7 +339,6 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
-import { Loader } from '@/components/ai-elements/loader'
 
 const bootstrap = createBootstrapStore()
 const {
@@ -428,12 +426,16 @@ function persistHistory() {
     id: activeHistoryId.value || `${Date.now()}`,
     title,
     conversationId: getConversationId(),
-    messages: JSON.parse(JSON.stringify(messages.value)),
+    messages: messagesForHistory(),
     updatedAt: Date.now(),
   }
   activeHistoryId.value = item.id
   history.value = [item, ...history.value.filter(entry => entry.id !== item.id)].slice(0, 50)
   localStorage.setItem(historyStorageKey.value, JSON.stringify(history.value))
+}
+
+function messagesForHistory(): AgentChatMessage[] {
+  return JSON.parse(JSON.stringify(messages.value, (key, value) => key === 'previewUrl' ? undefined : value))
 }
 function openHistory(item: ConversationHistory) {
   skipNextHistoryPersist = true

@@ -4,12 +4,36 @@ import { AGENT_STREAM_EVENT_TYPES, type AgentStreamEvent } from '@/types/agent-s
 
 export type ChatStreamEvent = AgentStreamEvent
 
+export interface AgentInputFileUpload {
+  uploadFileId: string
+  name: string
+  type: 'image' | 'document' | 'audio' | 'video'
+  mediaType: string
+  size: number
+}
+
+export async function uploadAgentInputFile(bootstrap: BootstrapState, file: File): Promise<AgentInputFileUpload> {
+  const form = new FormData()
+  form.append('file', file, file.name)
+  const response = await fetch(withBaseApi(bootstrap.baseApi, '/agent/files/upload'), {
+    method: 'POST',
+    headers: bootstrap.token ? { Authorization: `Bearer ${bootstrap.token}` } : {},
+    body: form,
+  })
+  const payload = await response.json().catch(() => null) as Record<string, unknown> | null
+  if (!response.ok || !payload || payload.code !== 200) {
+    if (isAuthExpiredStatus(response.status) || isAuthExpiredPayload(payload)) notifyAuthExpired()
+    throw new ApiError(String(payload?.msg ?? '附件上传失败'), response.status)
+  }
+  return payload.data as AgentInputFileUpload
+}
+
 export async function streamChat(bootstrap: BootstrapState, query: string, difyConversationId: string | undefined,
-  onEvent: (event: ChatStreamEvent) => void, signal?: AbortSignal) {
+  onEvent: (event: ChatStreamEvent) => void, signal?: AbortSignal, files: AgentInputFileUpload[] = []) {
   const response = await fetch(withBaseApi(bootstrap.baseApi, '/agent/chat/stream'), {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', ...(bootstrap.token ? { Authorization: `Bearer ${bootstrap.token}` } : {}) },
-    body: JSON.stringify({ query, difyConversationId, inputs: {} }),
+    body: JSON.stringify({ query, difyConversationId, inputs: {}, files }),
   })
   if (!response.ok) {
     if (isAuthExpiredStatus(response.status)) notifyAuthExpired()

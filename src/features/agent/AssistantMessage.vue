@@ -46,7 +46,27 @@
         </ReasoningContent>
       </Reasoning>
 
+      <Reasoning
+        v-else-if="message.role === 'assistant' && message.streaming && !renderedAnswerText"
+        :is-streaming="true"
+        class="mb-3"
+      >
+        <ReasoningTrigger />
+      </Reasoning>
+
       <!-- 最终回复正文 -->
+      <Attachments v-if="message.role === 'user' && message.attachments?.length" variant="grid" class="mb-1 justify-end">
+        <Attachment
+          v-for="attachment in message.attachments"
+          :key="`${attachment.name}-${attachment.size}`"
+          :data="inputAttachmentData(attachment)"
+          :class="isPreviewableImage(attachment) ? 'cursor-zoom-in' : ''"
+          @click="openInputPreview(attachment)"
+        >
+          <AttachmentPreview />
+        </Attachment>
+      </Attachments>
+
       <MessageResponse
         v-if="renderedAnswerText"
         :content="renderedAnswerText"
@@ -169,6 +189,18 @@
       </div>
     </MessageContent>
   </Message>
+
+  <Dialog v-model:open="inputPreviewOpen">
+    <DialogContent class="max-w-5xl border-0 bg-transparent p-0 shadow-none" :show-close-button="true">
+      <DialogTitle class="sr-only">{{ selectedInputAttachment?.name || '图片预览' }}</DialogTitle>
+      <img
+        v-if="selectedInputAttachment?.previewUrl"
+        :src="selectedInputAttachment.previewUrl"
+        :alt="selectedInputAttachment.name"
+        class="max-h-[85vh] w-full rounded-xl bg-background object-contain shadow-2xl"
+      >
+    </DialogContent>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -198,6 +230,10 @@ import {
 } from '@/components/ai-elements/sources'
 import type { AgentToolCall, AgentKnowledgeCall, AgentChart } from './useAgentChat'
 import type { AgentFile } from './useAgentChat'
+import type { AgentInputAttachment } from './useAgentChat'
+import { Attachment, AttachmentPreview, Attachments } from '@/components/ai-elements/attachments'
+import type { AttachmentData } from '@/components/ai-elements/attachments'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import ChartMessage from './ChartMessage.vue'
 import GeneratedFilesMessage from './GeneratedFilesMessage.vue'
 import PurchaseOrderDraftCard from './PurchaseOrderDraftCard.vue'
@@ -216,7 +252,31 @@ export interface AgentChatMessage {
   knowledges: AgentKnowledgeCall[]
   charts: AgentChart[]
   files: AgentFile[]
+  attachments: AgentInputAttachment[]
   purchaseOrderDrafts: AgentPurchaseOrderDraft[]
+}
+
+function inputAttachmentData(attachment: AgentInputAttachment): AttachmentData {
+  return {
+    id: `${attachment.name}-${attachment.size ?? 0}`,
+    type: 'file',
+    filename: attachment.name,
+    mediaType: attachment.mediaType || 'application/octet-stream',
+    url: attachment.previewUrl || '',
+  }
+}
+
+const inputPreviewOpen = ref(false)
+const selectedInputAttachment = ref<AgentInputAttachment | null>(null)
+
+function isPreviewableImage(attachment: AgentInputAttachment) {
+  return Boolean(attachment.previewUrl && attachment.mediaType?.startsWith('image/'))
+}
+
+function openInputPreview(attachment: AgentInputAttachment) {
+  if (!isPreviewableImage(attachment)) return
+  selectedInputAttachment.value = attachment
+  inputPreviewOpen.value = true
 }
 
 const props = defineProps<{
