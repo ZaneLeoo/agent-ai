@@ -18,6 +18,7 @@ export interface AgentToolCall {
   position?: number
   input?: unknown
   output?: unknown
+  count?: number
 }
 
 export interface AgentKnowledgeCall {

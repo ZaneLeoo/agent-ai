@@ -36,6 +36,7 @@
                       <Search class="size-4" />
                       <p class="text-sm">
                         {{ block.tool.phase === 'finished' ? '已完成' : '正在调用' }}：{{ block.tool.toolLabel || block.tool.toolName }}
+                        <span v-if="block.count && block.count > 1" class="ml-1">× {{ block.count }}</span>
                       </p>
                     </div>
                   </TaskTrigger>
@@ -319,7 +320,7 @@ function formatValue(value: unknown) {
 // 1. 将文本按 think 标签切割为多段
 type AnswerBlock = { type: 'answer'; content: string }
 type ReasoningBlock = { type: 'reasoning'; content: string; streaming?: boolean }
-type ToolBlock = { type: 'tool'; tool: AgentToolCall }
+type ToolBlock = { type: 'tool'; tool: AgentToolCall; count?: number }
 type DisplayBlock = AnswerBlock | ReasoningBlock | ToolBlock
 
 function parseContentToBlocks(content: string, isStreaming: boolean): Array<AnswerBlock | ReasoningBlock> {
@@ -404,7 +405,34 @@ const displayBlocks = computed<DisplayBlock[]>(() => {
 
 // 收集思考和工具组成的链条
 const reasoningChain = computed(() => {
-  return displayBlocks.value.filter(block => block.type === 'reasoning' || block.type === 'tool')
+  const chain: Array<ReasoningBlock | ToolBlock> = []
+  const toolGroups = new Map<string, ToolBlock>()
+
+  for (const block of displayBlocks.value) {
+    if (block.type === 'reasoning') {
+      chain.push(block)
+      continue
+    }
+    if (block.type !== 'tool') continue
+
+    const key = block.tool.toolName || block.tool.toolLabel || block.tool.callId
+    const existing = toolGroups.get(key)
+    if (!existing) {
+      const grouped = { type: 'tool', tool: { ...block.tool }, count: 1 } as ToolBlock
+      toolGroups.set(key, grouped)
+      chain.push(grouped)
+      continue
+    }
+
+    existing.count = (existing.count ?? 1) + 1
+    if (block.tool.phase !== 'finished') existing.tool.phase = 'started'
+    if (block.tool.phase === 'finished') {
+      existing.tool.output = block.tool.output
+      existing.tool.input = block.tool.input
+    }
+  }
+
+  return chain
 })
 
 // 合并拼接出最终的回复正文
